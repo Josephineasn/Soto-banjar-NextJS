@@ -1,69 +1,178 @@
-import Image from "next/image";
+"use client";
+import React, { useState, useMemo } from "react";
+import Navbar from "@/components/Navbar";
+import Herobanner from "@/components/Herobanner";
+import MenuCard from "@/components/MenuCard";
+import MenuDetailModal from "@/components/MenuDetailModal";
+import CartDrawer from "@/components/CartDrawer";
+import CheckoutModal from "@/components/CheckoutModal";
+import ReceiptModal from "@/components/ReceiptModal";
+import ReviewSection from "@/components/ReviewSection";
+import { INITIAL_MENU_ITEMS } from "@/data/menu";
+import { MenuItem, CartItem, OrderData } from "@/types";
 
-export default function Home() {
+export default function HomePage() {
+  const [menuItems] = useState<MenuItem[]>(INITIAL_MENU_ITEMS);
+  const [selectedCategory, setSelectedCategory] = useState<string>("semua");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [detailItem, setDetailItem] = useState<MenuItem | null>(null);
+  const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false);
+  const [isReceiptOpen, setIsReceiptOpen] = useState<boolean>(false);
+  const [lastOrder, setLastOrder] = useState<OrderData | null>(null);
+
+  const handleAddToCart = (item: MenuItem) => {
+    setCart((prev) => {
+      const idx = prev.findIndex((i) => i.id === item.id);
+      if (idx > -1) {
+        const copy = [...prev];
+        copy[idx].qty += 1;
+        return copy;
+      }
+      return [...prev, { ...item, qty: 1 }];
+    });
+  };
+
+  const handleUpdateQty = (index: number, delta: number) => {
+    setCart((prev) => {
+      const copy = [...prev];
+      const newQty = copy[index].qty + delta;
+      if (newQty <= 0) return copy.filter((_, i) => i !== index);
+      copy[index].qty = newQty;
+      return copy;
+    });
+  };
+
+  const filteredMenu = useMemo(() => {
+    return menuItems.filter((item) => {
+      const matchCat = selectedCategory === "semua" || item.category === selectedCategory;
+      const matchQuery =
+        item.name.toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
+        item.description.toLowerCase().includes(searchQuery.toLowerCase().trim());
+      return matchCat && matchQuery;
+    });
+  }, [menuItems, selectedCategory, searchQuery]);
+
+  const cartTotalCount = cart.reduce((sum, item) => sum + item.qty, 0);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", backgroundColor: "#fffdf7" }}>
+      <Navbar
+        cartCount={cartTotalCount}
+        onOpenCart={() => setIsCartOpen(true)}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        onGoToOrderForm={() => {
+          if (cart.length === 0) {
+            alert("Pilih minimal satu menu soto atau wadai dahulu ya!");
+          } else {
+            setIsCheckoutOpen(true);
+          }
+        }}
+      />
+
+      <Herobanner
+        onOrderNow={() => {
+          const el = document.getElementById("menu-section");
+          el?.scrollIntoView({ behavior: "smooth" });
+        }}
+      />
+
+      <main id="menu-section" style={{ maxWidth: "1100px", margin: "0 auto", padding: "36px 16px", flex: 1 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
+          <div>
+            <h2 style={{ fontSize: "24px", fontWeight: "900", color: "#431407", margin: 0, fontFamily: "serif" }}>
+              Daftar Menu Siap Antar
+            </h2>
+            <p style={{ fontSize: "12px", color: "#78350f", margin: "4px 0 0" }}>
+              Dimasak segar dengan rempah asli Kalimantan Selatan
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            {[
+              { id: "semua", label: "Semua Menu" },
+              { id: "makanan", label: "Makanan Berat" },
+              { id: "pendamping", label: "Pendamping" },
+              { id: "cemilan", label: "Cemilan" },
+              { id: "minuman", label: "Minuman Segar" },
+            ].map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setSelectedCategory(c.id)}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: "12px",
+                  fontSize: "12px",
+                  fontWeight: "bold",
+                  border: "none",
+                  cursor: "pointer",
+                  background: selectedCategory === c.id ? "#ea580c" : "#fef3c7",
+                  color: selectedCategory === c.id ? "#fff" : "#78350f",
+                }}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "20px" }}>
+          {filteredMenu.map((item) => (
+            <MenuCard
+              key={item.id}
+              item={item}
+              onAddToCart={handleAddToCart}
+              onOpenDetail={(i) => setDetailItem(i)}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          ))}
         </div>
       </main>
+
+      <ReviewSection />
+
+      <footer style={{ background: "#451a03", color: "#fef3c7", padding: "24px 16px", textAlign: "center", fontSize: "12px" }}>
+        <p style={{ margin: "0 0 4px", fontWeight: "bold" }}>Soto Banjar Selera Nusantara • Delivery Online Khusus Panas</p>
+        <p style={{ margin: 0, opacity: 0.8 }}>Project Frontend Kelompok 5 TI-B © 2026. All rights reserved.</p>
+      </footer>
+
+      <MenuDetailModal
+        item={detailItem}
+        onClose={() => setDetailItem(null)}
+        onAddToCart={handleAddToCart}
+      />
+
+      <CartDrawer
+        isOpen={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
+        cart={cart}
+        onUpdateQty={handleUpdateQty}
+        onProceedCheckout={() => {
+          setIsCartOpen(false);
+          setIsCheckoutOpen(true);
+        }}
+      />
+
+      <CheckoutModal
+        isOpen={isCheckoutOpen}
+        onClose={() => setIsCheckoutOpen(false)}
+        cart={cart}
+        onSubmitSuccess={(order) => {
+          setIsCheckoutOpen(false);
+          setLastOrder(order);
+          setIsReceiptOpen(true);
+        }}
+      />
+
+      <ReceiptModal
+        isOpen={isReceiptOpen}
+        order={lastOrder}
+        onClose={() => {
+          setIsReceiptOpen(false);
+          setCart([]);
+        }}
+      />
     </div>
   );
 }
