@@ -9,7 +9,7 @@ export default function ReviewSection() {
         },
         {
         name: "Calvin Sihol",
-        text: "Nasi kuning bumbu habang plus ikan haruan empuk, wadai amparan tataknya legit manis gurih.",
+        text: "Nasi kuning bumbu habang plus ikan haruan empuk, cemilan amparan tataknya legit manis gurih.",
         rating: 5,
         },
         {

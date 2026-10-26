@@ -65,7 +65,7 @@ export default function HomePage() {
         setSearchQuery={setSearchQuery}
         onGoToOrderForm={() => {
           if (cart.length === 0) {
-            alert("Pilih minimal satu menu soto atau wadai dahulu ya!");
+            alert("Pilih minimal satu menu dahulu ya!");
           } else {
             setIsCheckoutOpen(true);
           }
