@@ -1,178 +1,272 @@
+
 "use client";
-import React, { useState, useMemo } from "react";
+
+import { useEffect, useMemo, useState } from "react";
+
 import Navbar from "@/components/Navbar";
 import Herobanner from "@/components/Herobanner";
 import MenuCard from "@/components/MenuCard";
 import MenuDetailModal from "@/components/MenuDetailModal";
 import CartDrawer from "@/components/CartDrawer";
-import CheckoutModal from "@/components/CheckoutModal";
-import ReceiptModal from "@/components/ReceiptModal";
-import ReviewSection from "@/components/ReviewSection";
-import { INITIAL_MENU_ITEMS } from "@/data/menu";
-import { MenuItem, CartItem, OrderData } from "@/types";
+import type { MenuItem, CartItem } from "@/types";
 
-export default function HomePage() {
-  const [menuItems] = useState<MenuItem[]>(INITIAL_MENU_ITEMS);
-  const [selectedCategory, setSelectedCategory] = useState<string>("semua");
-  const [searchQuery, setSearchQuery] = useState<string>("");
+const categories = [
+  { id: "semua", name: "Semua Menu" },
+  { id: "makanan", name: "Makanan" },
+  { id: "cemilan", name: "Cemilan" },
+  { id: "pendamping", name: "Pendamping" },
+  { id: "minuman", name: "Minuman" },
+];
+
+export default function Home() {
+  const [menus, setMenus] = useState<MenuItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [category, setCategory] = useState("semua");
+
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [detailItem, setDetailItem] = useState<MenuItem | null>(null);
-  const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
-  const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false);
-  const [isReceiptOpen, setIsReceiptOpen] = useState<boolean>(false);
-  const [lastOrder, setLastOrder] = useState<OrderData | null>(null);
+  const [cartOpen, setCartOpen] = useState(false);
 
-  const handleAddToCart = (item: MenuItem) => {
-    setCart((prev) => {
-      const idx = prev.findIndex((i) => i.id === item.id);
-      if (idx > -1) {
-        const copy = [...prev];
-        copy[idx].qty += 1;
-        return copy;
+  const [selectedMenu, setSelectedMenu] =
+    useState<MenuItem | null>(null);
+
+  async function loadMenus() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const response = await fetch("/api/menu", {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error("Gagal mengambil menu");
       }
-      return [...prev, { ...item, qty: 1 }];
-    });
-  };
 
-  const handleUpdateQty = (index: number, delta: number) => {
-    setCart((prev) => {
-      const copy = [...prev];
-      const newQty = copy[index].qty + delta;
-      if (newQty <= 0) return copy.filter((_, i) => i !== index);
-      copy[index].qty = newQty;
-      return copy;
-    });
-  };
+      const data: MenuItem[] = await response.json();
+      setMenus(data);
+    } catch {
+      setError("Menu gagal dimuat dari database.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
-  const filteredMenu = useMemo(() => {
-    return menuItems.filter((item) => {
-      const matchCat = selectedCategory === "semua" || item.category === selectedCategory;
-      const matchQuery =
-        item.name.toLowerCase().includes(searchQuery.toLowerCase().trim()) ||
-        item.description.toLowerCase().includes(searchQuery.toLowerCase().trim());
-      return matchCat && matchQuery;
-    });
-  }, [menuItems, selectedCategory, searchQuery]);
+  useEffect(() => {
+  const timer = setTimeout(() => {
+    void loadMenus();
+  }, 0);
 
-  const cartTotalCount = cart.reduce((sum, item) => sum + item.qty, 0);
+  return () => clearTimeout(timer);
+}, []);
+  const filteredMenus = useMemo(() => {
+    return menus.filter((menu) => {
+      const matchCategory =
+        category === "semua" || menu.category === category;
+
+      const matchSearch = menu.name
+        .toLowerCase()
+        .includes(searchQuery.toLowerCase());
+
+      return matchCategory && matchSearch;
+    });
+  }, [menus, category, searchQuery]);
+
+  function addToCart(item: MenuItem) {
+    if (!item.available) return;
+
+    setCart((previous) => {
+      const existing = previous.find(
+        (cartItem) => cartItem.id === item.id
+      );
+
+      if (existing) {
+        return previous.map((cartItem) =>
+          cartItem.id === item.id
+            ? { ...cartItem, qty: cartItem.qty + 1 }
+            : cartItem
+        );
+      }
+
+      return [...previous, { ...item, qty: 1 }];
+    });
+
+    setSelectedMenu(null);
+    setCartOpen(true);
+  }
+
+  function updateQty(id: number, change: number) {
+    setCart((previous) =>
+      previous
+        .map((item) =>
+          item.id === id
+            ? { ...item, qty: item.qty + change }
+            : item
+        )
+        .filter((item) => item.qty > 0)
+    );
+  }
+
+  function removeItem(id: number) {
+    setCart((previous) =>
+      previous.filter((item) => item.id !== id)
+    );
+  }
+
+  const cartCount = cart.reduce(
+    (total, item) => total + item.qty,
+    0
+  );
+
+  function scrollToMenu() {
+    document
+      .getElementById("menu")
+      ?.scrollIntoView({ behavior: "smooth" });
+  }
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", backgroundColor: "#fffdf7" }}>
+    <main
+      style={{
+        minHeight: "100vh",
+        backgroundColor: "#fffdf7",
+        color: "#451a03",
+      }}
+    >
       <Navbar
-        cartCount={cartTotalCount}
-        onOpenCart={() => setIsCartOpen(true)}
+        cartCount={cartCount}
+        onOpenCart={() => setCartOpen(true)}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
-        onGoToOrderForm={() => {
-          if (cart.length === 0) {
-            alert("Pilih minimal satu menu dahulu ya!");
-          } else {
-            setIsCheckoutOpen(true);
-          }
-        }}
+        onGoToOrderForm={() => setCartOpen(true)}
       />
 
-      <Herobanner
-        onOrderNow={() => {
-          const el = document.getElementById("menu-section");
-          el?.scrollIntoView({ behavior: "smooth" });
+      <Herobanner onOrderNow={scrollToMenu} />
+
+      <section
+        id="menu"
+        style={{
+          maxWidth: "1200px",
+          margin: "0 auto",
+          padding: "45px 20px",
         }}
-      />
+      >
+        <div style={{ marginBottom: "25px" }}>
+          <h2
+            style={{
+              fontSize: "28px",
+              fontWeight: 900,
+              color: "#7c2d12",
+              marginBottom: "8px",
+            }}
+          >
+            Menu Pilihan Kami
+          </h2>
 
-      <main id="menu-section" style={{ maxWidth: "1100px", margin: "0 auto", padding: "36px 16px", flex: 1 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
-          <div>
-            <h2 style={{ fontSize: "24px", fontWeight: "900", color: "#431407", margin: 0, fontFamily: "serif" }}>
-              Daftar Menu Siap Antar
-            </h2>
-            <p style={{ fontSize: "12px", color: "#78350f", margin: "4px 0 0" }}>
-              Dimasak segar dengan rempah asli Kalimantan Selatan
-            </p>
-          </div>
+          <p style={{ color: "#92400e" }}>
+            Sajian khas Banjar dengan rempah pilihan.
+          </p>
 
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-            {[
-              { id: "semua", label: "Semua Menu" },
-              { id: "makanan", label: "Makanan Berat" },
-              { id: "pendamping", label: "Pendamping" },
-              { id: "cemilan", label: "Cemilan" },
-              { id: "minuman", label: "Minuman Segar" },
-            ].map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setSelectedCategory(c.id)}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: "12px",
-                  fontSize: "12px",
-                  fontWeight: "bold",
-                  border: "none",
-                  cursor: "pointer",
-                  background: selectedCategory === c.id ? "#ea580c" : "#fef3c7",
-                  color: selectedCategory === c.id ? "#fff" : "#78350f",
-                }}
-              >
-                {c.label}
-              </button>
-            ))}
-          </div>
+          <button
+            onClick={loadMenus}
+            style={{
+              marginTop: "12px",
+              padding: "8px 15px",
+              background: "#ffedd5",
+              border: "1px solid #fdba74",
+              borderRadius: "8px",
+              cursor: "pointer",
+              color: "#9a3412",
+            }}
+          >
+            ↻ Refresh Menu
+          </button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "20px" }}>
-          {filteredMenu.map((item) => (
-            <MenuCard
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            flexWrap: "wrap",
+            marginBottom: "30px",
+          }}
+        >
+          {categories.map((item) => (
+            <button
               key={item.id}
-              item={item}
-              onAddToCart={handleAddToCart}
-              onOpenDetail={(i) => setDetailItem(i)}
-            />
+              onClick={() => setCategory(item.id)}
+              style={{
+                padding: "10px 20px",
+                borderRadius: "25px",
+                cursor: "pointer",
+                border: "1px solid #fdba74",
+                fontWeight: "bold",
+                background:
+                  category === item.id ? "#ea580c" : "#ffffff",
+                color:
+                  category === item.id ? "#ffffff" : "#9a3412",
+              }}
+            >
+              {item.name}
+            </button>
           ))}
         </div>
-      </main>
 
-      <ReviewSection />
+        {loading ? (
+          <p>Memuat menu dari database...</p>
+        ) : error ? (
+          <p style={{ color: "red" }}>{error}</p>
+        ) : filteredMenus.length === 0 ? (
+          <p>Menu tidak ditemukan.</p>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(auto-fill, minmax(250px, 1fr))",
+              gap: "22px",
+            }}
+          >
+            {filteredMenus.map((item) => (
+              <MenuCard
+                key={item.id}
+                item={item}
+                onAddToCart={addToCart}
+                onOpenDetail={setSelectedMenu}
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
-      <footer style={{ background: "#451a03", color: "#fef3c7", padding: "24px 16px", textAlign: "center", fontSize: "12px" }}>
-        <p style={{ margin: "0 0 4px", fontWeight: "bold" }}>Soto Banjar Selera Nusantara • Delivery Online Khusus Panas</p>
-        <p style={{ margin: 0, opacity: 0.8 }}>Project Frontend Kelompok 5 TI-B © 2026. All rights reserved.</p>
+      <footer
+        style={{
+          background: "#431407",
+          color: "#fff7ed",
+          padding: "30px 20px",
+          textAlign: "center",
+        }}
+      >
+        <h3>Soto Banjar Selera Nusantara</h3>
+        <p style={{ marginTop: "8px", fontSize: "13px" }}>
+          Cita rasa khas Kalimantan Selatan.
+        </p>
       </footer>
 
       <MenuDetailModal
-        item={detailItem}
-        onClose={() => setDetailItem(null)}
-        onAddToCart={handleAddToCart}
+        item={selectedMenu}
+        onClose={() => setSelectedMenu(null)}
+        onAddToCart={addToCart}
       />
 
       <CartDrawer
-        isOpen={isCartOpen}
-        onClose={() => setIsCartOpen(false)}
+        isOpen={cartOpen}
+        onClose={() => setCartOpen(false)}
         cart={cart}
-        onUpdateQty={handleUpdateQty}
-        onProceedCheckout={() => {
-          setIsCartOpen(false);
-          setIsCheckoutOpen(true);
-        }}
+        onUpdateQty={updateQty}
+        onRemoveItem={removeItem}
       />
-
-      <CheckoutModal
-        isOpen={isCheckoutOpen}
-        onClose={() => setIsCheckoutOpen(false)}
-        cart={cart}
-        onSubmitSuccess={(order) => {
-          setIsCheckoutOpen(false);
-          setLastOrder(order);
-          setIsReceiptOpen(true);
-        }}
-      />
-
-      <ReceiptModal
-        isOpen={isReceiptOpen}
-        order={lastOrder}
-        onClose={() => {
-          setIsReceiptOpen(false);
-          setCart([]);
-        }}
-      />
-    </div>
+    </main>
   );
 }

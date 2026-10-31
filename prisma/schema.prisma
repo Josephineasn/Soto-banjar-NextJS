@@ -1,0 +1,76 @@
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Menu {
+  id            Int     @id @default(autoincrement())
+  name          String
+  category      String
+  price         Int
+  rating        Float   @default(0)
+  spicyLevel    String  @default("Tidak Pedas")
+  calories      String  @default("-")
+  packagingInfo String  @default("-")
+  description   String
+  spices        String  @default("[]")
+  image         String
+  popular       Boolean @default(false)
+  available     Boolean @default(true)
+
+  orderItems OrderItem[]
+  reviews    Review[]
+}
+
+model Order {
+  id               String   @id @default(cuid())
+  recipientName    String
+  recipientPhone   String
+  fullAddress      String
+  addressBenchmark String   @default("")
+  areaName         String
+  courierName      String
+  deliveryTime     String   @default("Secepatnya")
+  paymentMethod    String
+  notes            String   @default("")
+
+  subtotal    Int
+  shippingFee Int
+  serviceFee  Int      @default(2000)
+  discount    Int      @default(0)
+  total       Int
+
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+
+  items OrderItem[]
+}
+
+model OrderItem {
+  id      Int    @id @default(autoincrement())
+  orderId String
+  menuId  Int?
+  name    String
+  price   Int
+  qty     Int
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  menu Menu? @relation(fields: [menuId], references: [id], onDelete: SetNull)
+}
+
+model Review {
+  id        Int      @id @default(autoincrement())
+  menuId    Int
+  name      String
+  rating    Int
+  comment   String
+  createdAt DateTime @default(now())
+
+  menu Menu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+}
