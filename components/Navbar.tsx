@@ -3,190 +3,196 @@
 interface NavbarProps {
     cartCount: number;
     onOpenCart: () => void;
-    searchQuery: string;
-    setSearchQuery: (q: string) => void;
-    onGoToOrderForm: () => void;
 }
 
-    export default function Navbar({
-    cartCount,
-    onOpenCart,
-    searchQuery,
-    setSearchQuery,
-    onGoToOrderForm,
-    }: NavbarProps) {
-    return (
-        <>
-        <div
-            style={{
-            background: "linear-gradient(90deg, #f59e0b, #ea580c, #d97706)",
-            color: "#fff",
-            padding: "8px 16px",
-            fontSize: "12px",
-            }}
-        >
-            <div
-            style={{
-                maxWidth: "1200px",
-                margin: "0 auto",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-            }}
-            >
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span
-                style={{
-                    background: "rgba(255,255,255,0.25)",
-                    padding: "2px 8px",
-                    borderRadius: "12px",
-                    fontWeight: "900",
-                    fontSize: "10px",
-                }}
-                >
-                DELIVERY ONLINE
-                </span>
-                <span>Soto Banjar Selera Nusantara • Pengiriman Panas ke Seluruh Kota</span>
-            </div>
-            <span
-                style={{
-                background: "rgba(67,20,7,0.3)",
-                padding: "2px 10px",
-                borderRadius: "6px",
-                fontWeight: "bold",
-                fontSize: "11px",
-                color: "#fef08a",
-                }}
-            >
-                Voucher: ONGKIRHEMAT
-            </span>
-            </div>
-        </div>
+    export default function Navbar({ cartCount, onOpenCart }: NavbarProps) {
+    const scrollTo = (id: string) => {
+        if (id === "top") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+        }
+        const element = document.getElementById(id);
+        if (element) {
+        element.scrollIntoView({ behavior: "smooth" });
+        }
+    };
 
+    return (
         <header
-            style={{
-            background: "#ffffff",
-            borderBottom: "2px solid #fed7aa",
+        style={{
+            backgroundColor: "#2E1C14",
+            borderBottom: "1px solid rgba(253, 230, 138, 0.2)",
             position: "sticky",
             top: 0,
-            zIndex: 40,
-            boxShadow: "0 2px 10px rgba(0,0,0,0.06)",
+            zIndex: 50,
+            boxShadow: "0 4px 20px rgba(46, 28, 20, 0.15)",
+        }}
+        >
+        <div
+            style={{
+            maxWidth: "1240px",
+            margin: "0 auto",
+            padding: "14px 24px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "20px",
             }}
         >
+            {/* Logo */}
             <div
+            onClick={() => scrollTo("top")}
             style={{
-                maxWidth: "1200px",
-                margin: "0 auto",
-                padding: "12px 16px",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "space-between",
-                gap: "16px",
+                gap: "12px",
+                cursor: "pointer",
             }}
             >
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <div
+            <div
                 style={{
-                    width: "44px",
-                    height: "44px",
-                    borderRadius: "14px",
-                    background: "linear-gradient(135deg, #f59e0b, #ea580c)",
+                width: "42px",
+                height: "42px",
+                borderRadius: "12px",
+                backgroundColor: "#B45309",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "22px",
+                boxShadow: "0 2px 8px rgba(180, 83, 9, 0.4)",
+                }}
+            >
+                🍲
+            </div>
+            <div>
+                <h1
+                style={{
+                    fontSize: "18px",
+                    fontWeight: "900",
+                    color: "#FEF3C7",
+                    margin: 0,
+                    lineHeight: "1.2",
+                }}
+                >
+                Soto Banjar
+                </h1>
+                <span
+                style={{
+                    fontSize: "11px",
+                    fontWeight: "600",
+                    color: "#D97706",
+                    letterSpacing: "1px",
+                    textTransform: "uppercase",
+                }}
+                >
+                Delivery Jabodetabek
+                </span>
+            </div>
+            </div>
+
+            {/* Navigasi */}
+            <nav
+            style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "28px",
+            }}
+            >
+            {[
+                { label: "Beranda", id: "top" },
+                { label: "Menu", id: "menu" },
+                { label: "Tentang Kami", id: "tentang-kami" },
+                { label: "FAQ", id: "faq" },
+                { label: "Lokasi", id: "lokasi" },
+            ].map((item) => (
+                <button
+                key={item.id}
+                type="button"
+                onClick={() => scrollTo(item.id)}
+                style={{
+                    background: "none",
+                    border: "none",
+                    color: item.id === "top" ? "#F59E0B" : "#E7D8C9",
+                    fontWeight: item.id === "top" ? "800" : "500",
+                    fontSize: "14px",
+                    cursor: "pointer",
+                    padding: "6px 0",
+                    transition: "color 0.2s ease",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#F59E0B")}
+                onMouseLeave={(e) =>
+                    (e.currentTarget.style.color =
+                    item.id === "top" ? "#F59E0B" : "#E7D8C9")
+                }
+                >
+                {item.label}
+                </button>
+            ))}
+            </nav>
+
+            {/* Tombol Keranjang */}
+            <div style={{ display: "flex", alignItems: "center" }}>
+            <button
+                type="button"
+                onClick={onOpenCart}
+                title="Buka Keranjang"
+                style={{
+                position: "relative",
+                width: "42px",
+                height: "42px",
+                borderRadius: "12px",
+                backgroundColor: "rgba(254, 243, 199, 0.1)",
+                border: "1px solid rgba(254, 243, 199, 0.25)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                color: "#FEF3C7",
+                transition: "all 0.2s ease",
+                }}
+            >
+                <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="19"
+                height="19"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+                >
+                <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+                />
+                </svg>
+
+                {cartCount > 0 && (
+                <span
+                    style={{
+                    position: "absolute",
+                    top: "-5px",
+                    right: "-5px",
+                    background: "#B45309",
+                    color: "#FFFFFF",
+                    fontSize: "10px",
+                    fontWeight: "900",
+                    borderRadius: "50%",
+                    minWidth: "18px",
+                    height: "18px",
+                    padding: "0 4px",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontSize: "24px",
-                    color: "#fff",
-                    boxShadow: "0 4px 10px rgba(234,88,12,0.3)",
-                }}
-                >
-                🍲
-                </div>
-                <div>
-                <span
-                    style={{
-                    fontSize: "20px",
-                    fontWeight: "900",
-                    color: "#1c1917",
-                    display: "block",
-                    fontFamily: "serif",
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
                     }}
                 >
-                    Soto Banjar <span style={{ color: "#ea580c" }}>Nusantara</span>
-                </span>
-                <span style={{ fontSize: "11px", color: "#c2410c", fontWeight: "bold" }}>
-                    Pesan Antar Online (Kelompok 5 TI-B)
-                </span>
-                </div>
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <input
-                type="text"
-                placeholder="Cari menu..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                    padding: "8px 14px",
-                    fontSize: "12px",
-                    borderRadius: "20px",
-                    border: "1px solid #fcd34d",
-                    background: "#fffbeb",
-                    outline: "none",
-                    width: "150px",
-                }}
-                />
-
-                <button
-                onClick={onGoToOrderForm}
-                style={{
-                    background: "#fff7ed",
-                    color: "#9a3412",
-                    border: "1px solid #fed7aa",
-                    borderRadius: "14px",
-                    padding: "8px 14px",
-                    fontWeight: "bold",
-                    fontSize: "12px",
-                    cursor: "pointer",
-                }}
-                >
-                🛵 Pesan Antar
-                </button>
-
-                <button
-                onClick={onOpenCart}
-                style={{
-                    background: "linear-gradient(90deg, #f59e0b, #ea580c)",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: "16px",
-                    padding: "8px 16px",
-                    fontWeight: "900",
-                    fontSize: "13px",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    boxShadow: "0 4px 12px rgba(234,88,12,0.3)",
-                }}
-                >
-                <span>🛒 Keranjang</span>
-                {cartCount > 0 && (
-                    <span
-                    style={{
-                        background: "#292524",
-                        color: "#fef08a",
-                        borderRadius: "10px",
-                        padding: "2px 7px",
-                        fontSize: "11px",
-                    }}
-                    >
                     {cartCount}
-                    </span>
+                </span>
                 )}
-                </button>
+            </button>
             </div>
-            </div>
+        </div>
         </header>
-        </>
     );
 }
