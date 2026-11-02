@@ -52,32 +52,27 @@ export default function CartDrawer({
   onRemoveItem,
   onClearCart,
 }: CartDrawerProps) {
-  // Input Kontak & Alamat
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [address, setAddress] = useState("");
   const [addressBenchmark, setAddressBenchmark] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
 
-  // Data Ongkir Murni dari Database SQLite (Tanpa Data Hardcode)
   const [areas, setAreas] = useState<DeliveryAreaItem[]>([]);
   const [services, setServices] = useState<ShippingServiceItem[]>([]);
   const [selectedAreaId, setSelectedAreaId] = useState<number | null>(null);
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
   const [loadingShipping, setLoadingShipping] = useState(true);
 
-  // Voucher & Pembayaran
   const [voucherCode, setVoucherCode] = useState("");
   const [appliedVoucher, setAppliedVoucher] = useState<{ code: string; discount: number } | null>(null);
   const [voucherMsg, setVoucherMsg] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("gopay");
 
-  // State Submit & Transaksi Sukses
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccessId, setOrderSuccessId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // Mengambil Data Area & Layanan Langsung dari Database SQLite via API
   useEffect(() => {
     async function fetchShippingData() {
       try {
@@ -108,9 +103,7 @@ export default function CartDrawer({
 
   if (!isOpen) return null;
 
-  // Kalkulasi Harga
   const subtotal = cart.reduce((total, item) => total + item.price * item.qty, 0);
-
   const selectedArea = areas.find((a) => a.id === selectedAreaId);
   const selectedService = services.find((s) => s.id === selectedServiceId);
 
@@ -122,7 +115,6 @@ export default function CartDrawer({
   const discountAmount = appliedVoucher ? appliedVoucher.discount : 0;
   const grandTotal = Math.max(0, subtotal + totalShipping + serviceFee - discountAmount);
 
-  // Logika 2 Voucher
   const handleApplyVoucher = (e: React.FormEvent) => {
     e.preventDefault();
     const cleanCode = voucherCode.trim().toUpperCase();
@@ -135,18 +127,17 @@ export default function CartDrawer({
     if (cleanCode === "ONGKIRHEMAT") {
       const discount = Math.min(10000, totalShipping);
       setAppliedVoucher({ code: cleanCode, discount });
-      setVoucherMsg(`Kupon "${cleanCode}" berhasil! Potongan ongkir Rp ${discount.toLocaleString("id-ID")}`);
+      setVoucherMsg(`Kupon "${cleanCode}" berhasil diterapkan.`);
     } else if (cleanCode === "SOTOBANJAR") {
       const discount = Math.round(subtotal * 0.1);
       setAppliedVoucher({ code: cleanCode, discount });
-      setVoucherMsg(`Kupon "${cleanCode}" berhasil! Diskon 10% (Rp ${discount.toLocaleString("id-ID")})`);
+      setVoucherMsg(`Kupon "${cleanCode}" berhasil diterapkan.`);
     } else {
       setAppliedVoucher(null);
       setVoucherMsg("Kode voucher tidak valid.");
     }
   };
 
-  // Reset Form untuk Pesan Lagi
   const handleOrderAgain = () => {
     onClearCart();
     setOrderSuccessId(null);
@@ -162,13 +153,12 @@ export default function CartDrawer({
     onClose();
   };
 
-  // Checkout Pesanan
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     if (cart.length === 0) return;
 
     if (!customerName.trim() || !customerPhone.trim() || !address.trim()) {
-      setErrorMsg("Mohon lengkapi nama penerima, nomor WhatsApp, dan alamat lengkap.");
+      setErrorMsg("Mohon lengkapi nama penerima, nomor telepon, dan alamat pengantaran.");
       return;
     }
 
@@ -213,7 +203,7 @@ export default function CartDrawer({
       if (err instanceof Error) {
         setErrorMsg(err.message);
       } else {
-        setErrorMsg("Terjadi kesalahan saat memproses checkout.");
+        setErrorMsg("Terjadi kesalahan saat memproses pesanan.");
       }
     } finally {
       setIsSubmitting(false);
@@ -244,7 +234,6 @@ export default function CartDrawer({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header Drawer */}
         <div
           style={{
             padding: "20px 24px",
@@ -255,12 +244,9 @@ export default function CartDrawer({
             backgroundColor: "#FAF6EE",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "22px" }}>🛍️</span>
-            <h2 style={{ fontSize: "18px", fontWeight: "900", color: "#734F31", margin: 0 }}>
-              Keranjang Belanja
-            </h2>
-          </div>
+          <h2 style={{ fontSize: "18px", fontWeight: "900", color: "#734F31", margin: 0 }}>
+            Keranjang Belanja
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -283,29 +269,11 @@ export default function CartDrawer({
           </button>
         </div>
 
-        {/* Konten Scrollable */}
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
           {orderSuccessId ? (
             <div style={{ textAlign: "center", padding: "30px 10px" }}>
-              <div
-                style={{
-                  width: "65px",
-                  height: "65px",
-                  borderRadius: "50%",
-                  background: "#DCFCE7",
-                  color: "#166534",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "32px",
-                  margin: "0 auto 18px",
-                }}
-              >
-                ✓
-              </div>
-
               <h3 style={{ fontSize: "20px", fontWeight: "900", color: "#166534", margin: "0 0 8px" }}>
-                Pesanan Berhasil Dibuat!
+                Pesanan Berhasil Dibuat
               </h3>
               <p style={{ fontSize: "13px", color: "#4B5563", margin: "0 0 20px" }}>
                 Pesanan Anda telah diterima dapur dan sedang dipersiapkan.
@@ -345,7 +313,7 @@ export default function CartDrawer({
                 <div>Area: <strong style={{ color: "#734F31" }}>{selectedArea?.name}</strong></div>
                 <div>Layanan: <strong style={{ color: "#734F31" }}>{selectedService?.name}</strong></div>
                 <div>Metode Bayar: <strong style={{ color: "#734F31", textTransform: "uppercase" }}>{paymentMethod.replace("_", " ")}</strong></div>
-                <div>Total Dibayar: <strong style={{ color: "#734F31" }}>Rp {grandTotal.toLocaleString("id-ID")}</strong></div>
+                <div>Total: <strong style={{ color: "#734F31" }}>Rp {grandTotal.toLocaleString("id-ID")}</strong></div>
               </div>
 
               <button
@@ -364,22 +332,20 @@ export default function CartDrawer({
                   boxShadow: "0 6px 18px rgba(115, 79, 49, 0.25)",
                 }}
               >
-                🍲 Pesan Menu Lain / Pesan Lagi
+                Pesan Menu Lain / Pesan Lagi
               </button>
             </div>
           ) : cart.length === 0 ? (
             <div style={{ textAlign: "center", padding: "60px 10px", color: "#9D9167" }}>
-              <div style={{ fontSize: "50px", marginBottom: "12px" }}>🛒</div>
               <h4 style={{ fontSize: "16px", fontWeight: "800", color: "#734F31", margin: "0 0 6px" }}>
                 Keranjang Masih Kosong
               </h4>
               <p style={{ fontSize: "13px", margin: 0 }}>
-                Silakan pilih sajian Soto Banjar favoritmu terlebih dahulu.
+                Silakan pilih sajian Soto Banjar terlebih dahulu.
               </p>
             </div>
           ) : (
             <div>
-              {/* LIST ITEM PESANAN */}
               <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginBottom: "24px" }}>
                 {cart.map((item) => (
                   <div key={item.id} style={{ borderBottom: "1px solid #F3EDE2", paddingBottom: "14px" }}>
@@ -465,10 +431,8 @@ export default function CartDrawer({
                 ))}
               </div>
 
-              {/* FORM PENGIRIMAN & KONTAK LENGKAP */}
               <form onSubmit={handleCheckout}>
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "22px" }}>
-                  {/* Nama Penerima */}
                   <input
                     type="text"
                     required
@@ -488,7 +452,6 @@ export default function CartDrawer({
                     }}
                   />
 
-                  {/* Nomor WhatsApp */}
                   <input
                     type="tel"
                     required
@@ -508,7 +471,6 @@ export default function CartDrawer({
                     }}
                   />
 
-                  {/* Alamat Lengkap */}
                   <textarea
                     required
                     rows={3}
@@ -529,7 +491,6 @@ export default function CartDrawer({
                     }}
                   />
 
-                  {/* Patokan Alamat */}
                   <input
                     type="text"
                     placeholder="Patokan alamat (opsional)"
@@ -548,7 +509,6 @@ export default function CartDrawer({
                     }}
                   />
 
-                  {/* Area Pengiriman Dropdown (Data Murni dari SQLite) */}
                   <div>
                     <label style={{ fontSize: "14px", fontWeight: "800", color: "#734F31", display: "block", marginBottom: "6px" }}>
                       Area Pengiriman
@@ -571,7 +531,7 @@ export default function CartDrawer({
                       }}
                     >
                       {loadingShipping ? (
-                        <option>Memuat area dari database...</option>
+                        <option>Memuat area...</option>
                       ) : (
                         areas.map((area) => (
                           <option key={area.id} value={area.id}>
@@ -582,7 +542,6 @@ export default function CartDrawer({
                     </select>
                   </div>
 
-                  {/* Layanan Pengiriman Dropdown (Data Murni dari SQLite) */}
                   <div>
                     <label style={{ fontSize: "14px", fontWeight: "800", color: "#734F31", display: "block", marginBottom: "6px" }}>
                       Layanan Pengiriman
@@ -605,7 +564,7 @@ export default function CartDrawer({
                       }}
                     >
                       {loadingShipping ? (
-                        <option>Memuat layanan dari database...</option>
+                        <option>Memuat layanan...</option>
                       ) : (
                         services.map((service) => (
                           <option key={service.id} value={service.id}>
@@ -616,7 +575,6 @@ export default function CartDrawer({
                     </select>
                   </div>
 
-                  {/* Catatan Pesanan */}
                   <textarea
                     rows={2}
                     placeholder="Catatan pesanan (opsional)"
@@ -637,7 +595,6 @@ export default function CartDrawer({
                   />
                 </div>
 
-                {/* VOUCHER PROMO */}
                 <div style={{ marginBottom: "24px" }}>
                   <label style={{ fontSize: "13px", fontWeight: "800", color: "#734F31", display: "block", marginBottom: "6px" }}>
                     Voucher Promo
@@ -691,7 +648,6 @@ export default function CartDrawer({
                   )}
                 </div>
 
-                {/* PILIHAN PEMBAYARAN */}
                 <h4 style={{ fontSize: "14px", fontWeight: "900", color: "#734F31", margin: "0 0 12px", letterSpacing: "0.5px" }}>
                   PILIHAN PEMBAYARAN
                 </h4>
@@ -753,7 +709,6 @@ export default function CartDrawer({
                   ))}
                 </div>
 
-                {/* RINCIAN PEMBAYARAN */}
                 <div style={{ backgroundColor: "#FAF6EE", borderRadius: "16px", padding: "18px 20px", marginBottom: "20px" }}>
                   <h4 style={{ fontSize: "15px", fontWeight: "900", color: "#734F31", margin: "0 0 14px" }}>
                     Rincian Pembayaran
@@ -826,7 +781,7 @@ export default function CartDrawer({
                       marginBottom: "16px",
                     }}
                   >
-                    ⚠️ {errorMsg}
+                    {errorMsg}
                   </div>
                 )}
 
