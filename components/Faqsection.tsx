@@ -2,62 +2,53 @@
 
 import React, { useState } from "react";
 
-interface FaqItem {
-    question: string;
-    answer: string;
-}
-
-    const faqs: FaqItem[] = [
+const faqs = [
     {
         question: "Apakah kuah soto dikirim terpisah agar tidak tumpah?",
         answer:
-        "Ya, kuah kaldu rempah dikemas khusus menggunakan mangkuk/standing pouch tahan panas berlapis rapat yang disegel rapi terpisah dari ketupat, suwiran ayam, dan perkedel untuk menjaga kesegaran dan menghindari tumpah di jalan.",
+        "Ya, kuah kaldu rempah dikemas khusus menggunakan standing pouch tahan panas food-grade berlapis rapat dan disegel terpisah dari ketupat, suwiran ayam kampung, dan perkedel untuk menjaga kesegaran serta rasa gurih optimal.",
     },
     {
         question: "Berapa lama waktu pengantaran di wilayah Jabodetabek?",
         answer:
-        "Untuk pengiriman instan rata-rata tiba dalam 30 - 60 menit setelah pesanan selesai dimasak. Kami bermitra dengan kurir instan dan sameday terpercaya untuk memastikan hidangan tiba dalam keadaan tetap hangat.",
+        "Untuk kurir instan rata-rata tiba dalam 30 - 45 menit setelah pesanan selesai diracik. Kami memastikan setiap porsi dikemas higienis dengan thermal bag agar tiba dalam kondisi masih hangat siap santap.",
     },
     {
         question: "Apakah seluruh menu dijamin 100% Halal?",
         answer:
-        "Seluruh bahan baku yang kami olah, mulai dari ayam kampung pilihan, telur bebek, sayuran, hingga bumbu rempah dapur telah bersertifikasi halal dan diproses dengan standar higienis tinggi tanpa bahan pengawet.",
+        "Seluruh bahan baku yang kami olah, mulai dari ayam kampung pilihan, telur bebek, sayuran segar, hingga bumbu rempah dapur telah bersertifikasi halal dan diproses dengan standar higienis tinggi tanpa bahan pengawet.",
     },
     {
         question: "Metode pembayaran apa saja yang didukung?",
         answer:
-        "Kami menerima pembayaran otomatis melalui QRIS (GoPay, OVO, Dana, ShopeePay, BCA, dll.), Virtual Account Bank, dan opsi Transfer Bank langsung.",
+        "Kami menerima pembayaran otomatis melalui QRIS (GoPay, OVO, DANA, ShopeePay, BCA, dll.), Virtual Account Bank nasional, serta metode Transfer Bank langsung.",
     },
     ];
 
-    export default function FaqSection() {
-    const [openIndex, setOpenIndex] = useState<number | null>(0); // Default item pertama terbuka
-
-    const toggleAccordion = (index: number) => {
-        setOpenIndex(openIndex === index ? null : index);
-    };
+    export default function Faqsection() {
+    const [openIndex, setOpenIndex] = useState<number | null>(0);
 
     return (
         <section
         id="faq"
         style={{
-            backgroundColor: "#fffdfa",
-            padding: "80px 24px",
+            backgroundColor: "#FAF6EE",
+            padding: "90px 24px",
         }}
         >
-        <div style={{ maxWidth: "800px", margin: "0 auto" }}>
-            {/* Header Section */}
-            <div style={{ textAlign: "center", marginBottom: "40px" }}>
+        <div style={{ maxWidth: "860px", margin: "0 auto" }}>
+            <div style={{ textAlign: "center", marginBottom: "45px" }}>
             <div
                 style={{
                 display: "inline-block",
-                background: "#ffedd5",
-                color: "#c2410c",
-                fontSize: "11px",
-                fontWeight: "800",
+                background: "rgba(157, 145, 103, 0.2)",
+                border: "1.5px solid #9D9167",
+                color: "#734F31",
+                fontSize: "12px",
+                fontWeight: "900",
                 textTransform: "uppercase",
-                padding: "4px 14px",
-                borderRadius: "20px",
+                padding: "6px 16px",
+                borderRadius: "30px",
                 marginBottom: "12px",
                 letterSpacing: "0.5px",
                 }}
@@ -66,21 +57,20 @@ interface FaqItem {
             </div>
             <h2
                 style={{
-                fontSize: "32px",
+                fontSize: "36px",
                 fontWeight: "900",
-                color: "#292524",
-                margin: "0 0 8px 0",
+                color: "#734F31",
+                margin: "0 0 10px 0",
                 }}
             >
                 Pertanyaan Umum (FAQ)
             </h2>
-            <p style={{ fontSize: "14px", color: "#78716c", margin: 0 }}>
+            <p style={{ fontSize: "15px", color: "#9D9167", margin: 0, fontWeight: "600" }}>
                 Punya pertanyaan seputar cara pesan, pengiriman, dan kualitas soto kami?
             </p>
             </div>
 
-            {/* Daftar Accordion */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             {faqs.map((faq, index) => {
                 const isOpen = openIndex === index;
                 return (
@@ -88,64 +78,49 @@ interface FaqItem {
                     key={index}
                     style={{
                     backgroundColor: "#ffffff",
-                    border: isOpen ? "1px solid #fed7aa" : "1px solid #f3f4f6",
+                    border: isOpen ? "2px solid #734F31" : "1.5px solid #E8D1A7",
+                    borderLeft: isOpen ? "6px solid #734F31" : "1.5px solid #E8D1A7",
                     borderRadius: "16px",
                     overflow: "hidden",
                     boxShadow: isOpen
-                        ? "0 6px 18px rgba(234, 88, 12, 0.06)"
-                        : "0 2px 6px rgba(0, 0, 0, 0.02)",
-                    transition: "all 0.25s ease",
+                        ? "0 10px 25px rgba(115, 79, 49, 0.08)"
+                        : "0 3px 10px rgba(0, 0, 0, 0.02)",
+                    transition: "all 0.2s ease",
                     }}
                 >
                     <button
                     type="button"
-                    onClick={() => toggleAccordion(index)}
+                    onClick={() => setOpenIndex(isOpen ? null : index)}
                     style={{
                         width: "100%",
-                        padding: "18px 22px",
+                        padding: "20px 24px",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "space-between",
-                        background: isOpen ? "#fffaf5" : "#ffffff",
+                        background: isOpen ? "#FAF6EE" : "#ffffff",
                         border: "none",
                         cursor: "pointer",
                         textAlign: "left",
-                        gap: "12px",
+                        gap: "14px",
                     }}
                     >
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                        <span
+                    <span
                         style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            width: "22px",
-                            height: "22px",
-                            borderRadius: "50%",
-                            backgroundColor: "#ffedd5",
-                            color: "#ea580c",
-                            fontSize: "12px",
-                            fontWeight: "800",
+                        fontSize: "16px",
+                        fontWeight: "800",
+                        color: isOpen ? "#734F31" : "#4B382A",
                         }}
-                        >
-                        ?
-                        </span>
-                        <span
-                        style={{
-                            fontSize: "15px",
-                            fontWeight: "700",
-                            color: isOpen ? "#ea580c" : "#292524",
-                        }}
-                        >
+                    >
                         {faq.question}
-                        </span>
-                    </div>
+                    </span>
                     <span
                         style={{
                         transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
                         transition: "transform 0.25s ease",
-                        color: "#9ca3af",
-                        fontSize: "16px",
+                        color: "#9D9167",
+                        fontSize: "14px",
+                        fontWeight: "900",
+                        flexShrink: 0,
                         }}
                     >
                         ▼
@@ -155,11 +130,12 @@ interface FaqItem {
                     {isOpen && (
                     <div
                         style={{
-                        padding: "0 22px 20px 56px",
-                        fontSize: "13px",
-                        lineHeight: "1.7",
-                        color: "#57534e",
-                        backgroundColor: "#fffaf5",
+                        padding: "0 24px 22px 24px",
+                        fontSize: "14px",
+                        lineHeight: "1.8",
+                        color: "#734F31",
+                        backgroundColor: "#FAF6EE",
+                        borderTop: "1px dashed #E8D1A7",
                         }}
                     >
                         {faq.answer}

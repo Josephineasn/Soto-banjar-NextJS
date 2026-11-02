@@ -4,7 +4,7 @@ interface NavbarProps {
     cartCount: number;
     onOpenCart: () => void;
     onOpenHistory?: () => void;
-}
+    }
 
     export default function Navbar({
     cartCount,
@@ -44,58 +44,36 @@ interface NavbarProps {
             gap: "20px",
             }}
         >
-            {/* Logo */}
             <div
             onClick={() => scrollTo("top")}
             style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
                 cursor: "pointer",
             }}
             >
-            <div
+            <h1
                 style={{
-                width: "42px",
-                height: "42px",
-                borderRadius: "12px",
-                backgroundColor: "#B45309",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "22px",
-                boxShadow: "0 2px 8px rgba(180, 83, 9, 0.4)",
+                fontSize: "18px",
+                fontWeight: "900",
+                color: "#FEF3C7",
+                margin: 0,
+                lineHeight: "1.2",
                 }}
             >
-                🍲
-            </div>
-            <div>
-                <h1
-                style={{
-                    fontSize: "18px",
-                    fontWeight: "900",
-                    color: "#FEF3C7",
-                    margin: 0,
-                    lineHeight: "1.2",
-                }}
-                >
                 Soto Banjar
-                </h1>
-                <span
+            </h1>
+            <span
                 style={{
-                    fontSize: "11px",
-                    fontWeight: "600",
-                    color: "#D97706",
-                    letterSpacing: "1px",
-                    textTransform: "uppercase",
+                fontSize: "11px",
+                fontWeight: "600",
+                color: "#D97706",
+                letterSpacing: "1px",
+                textTransform: "uppercase",
                 }}
-                >
+            >
                 Delivery Jabodetabek
-                </span>
-            </div>
+            </span>
             </div>
 
-            {/* Navigasi */}
             <nav
             style={{
                 display: "flex",
@@ -135,16 +113,12 @@ interface NavbarProps {
             ))}
             </nav>
 
-            {/* Aksi Navbar: Tombol Riwayat & Keranjang */}
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <button
                 type="button"
                 onClick={onOpenHistory}
                 title="Lihat Riwayat Pesanan"
                 style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
                 padding: "9px 16px",
                 borderRadius: "12px",
                 backgroundColor: "rgba(254, 243, 199, 0.1)",
