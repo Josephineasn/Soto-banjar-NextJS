@@ -22,7 +22,6 @@ export default function AboutSection() {
             alignItems: "center",
             }}
         >
-            {/* Kolom Gambar dengan Floating Badge */}
             <div style={{ position: "relative", width: "100%", maxWidth: "480px", margin: "0 auto" }}>
             <div
                 style={{
@@ -118,7 +117,6 @@ export default function AboutSection() {
                     padding: "16px",
                 }}
                 >
-                <div style={{ fontSize: "20px", marginBottom: "8px" }}>🍗</div>
                 <h4 style={{ margin: "0 0 4px", fontSize: "13px", fontWeight: "700", color: "#ffffff" }}>
                     Ayam Kampung Asli
                 </h4>
@@ -135,7 +133,6 @@ export default function AboutSection() {
                     padding: "16px",
                 }}
                 >
-                <div style={{ fontSize: "20px", marginBottom: "8px" }}>🍊</div>
                 <h4 style={{ margin: "0 0 4px", fontSize: "13px", fontWeight: "700", color: "#ffffff" }}>
                     Jeruk Kuit Segar
                 </h4>

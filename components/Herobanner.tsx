@@ -51,7 +51,7 @@ interface HeroBannerProps {
                     letterSpacing: "0.4px",
                 }}
                 >
-                <span>🛵</span> Khusus Pesan Online • Area Jabodetabek
+                Khusus Pesan Online • Area Jabodetabek
                 </div>
 
                 <h1
@@ -178,17 +178,14 @@ interface HeroBannerProps {
             }}
             >
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <span style={{ fontSize: "18px" }}>🛡️</span>
                 <span>Packaging Food-Grade & Anti Tumpah</span>
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <span style={{ fontSize: "18px" }}>🛵</span>
                 <span>Layanan Antar Seluruh Jabodetabek</span>
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <span style={{ fontSize: "18px" }}>⏱️</span>
                 <span>Estimasi Pengantaran 30 - 45 Menit</span>
             </div>
             </div>

@@ -1,158 +1,98 @@
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { NextRequest, NextResponse } from "next/server";
 
-import {
-  DELIVERY_AREAS,
-  COURIER_SERVICES,
-} from "@/data/menu";
-
-// Menyimpan pesanan pelanggan
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    if (
-      !body.recipientName?.trim() ||
-      !/^\+?[0-9 -]{8,18}$/.test(body.recipientPhone || "") ||
-      !body.fullAddress?.trim() ||
-      !Array.isArray(body.items) ||
-      !body.items.length
-    ) {
+    const {
+      customerName,
+      customerPhone,
+      address,
+      addressBenchmark,
+      area,
+      service,
+      orderNotes,
+      voucher,
+      discount,
+      shippingFee,
+      serviceFee,
+      paymentMethod,
+      items,
+      totalPrice,
+    } = body;
+
+    if (!address || !items || items.length === 0) {
       return NextResponse.json(
-        { error: "Lengkapi data pemesan" },
+        { error: "Data pesanan belum lengkap." },
         { status: 400 }
       );
     }
 
-    const area = DELIVERY_AREAS.find(
-      (a) => a.id === body.areaId
-    );
-
-    const courier = COURIER_SERVICES.find(
-      (c) => c.id === body.courierId
-    );
-
-    if (!area || !courier) {
-      return NextResponse.json(
-        { error: "Pengiriman tidak valid" },
-        { status: 400 }
-      );
-    }
-
-    const quantities = new Map<number, number>();
-
-    for (const item of body.items) {
-      if (
-        !Number.isInteger(item.id) ||
-        !Number.isInteger(item.qty) ||
-        item.qty < 1 ||
-        item.qty > 50
-      ) {
-        return NextResponse.json(
-          { error: "Item invalid" },
-          { status: 400 }
-        );
-      }
-
-      quantities.set(
-        item.id,
-        (quantities.get(item.id) || 0) + item.qty
-      );
-    }
-
-    const menus = await prisma.menu.findMany({
-      where: {
-        id: { in: [...quantities.keys()] },
-        available: true,
-      },
-    });
-
-    if (menus.length !== quantities.size) {
-      return NextResponse.json(
-        { error: "Menu tidak tersedia" },
-        { status: 400 }
-      );
-    }
-
-    // Harga dihitung ulang berdasarkan database
-    const subtotal = menus.reduce(
-      (sum, menu) =>
-        sum + menu.price * quantities.get(menu.id)!,
-      0
-    );
-
-    const shippingFee = area.fee + courier.extra;
-    const serviceFee = 2000;
-
-    const order = await prisma.order.create({
+    // Buat pesanan baru di SQLite via Prisma
+    const newOrder = await prisma.order.create({
       data: {
-        recipientName: body.recipientName.trim(),
-        recipientPhone: body.recipientPhone,
-        fullAddress: body.fullAddress.trim(),
-        addressBenchmark: String(
-          body.addressBenchmark || ""
-        ),
-        areaName: area.name,
-        courierName: courier.name,
-        deliveryTime: String(
-          body.deliveryTime || "Secepatnya"
-        ),
-        paymentMethod: String(
-          body.paymentMethod || "COD"
-        ),
-        notes: String(body.notes || ""),
-        subtotal,
-        shippingFee,
-        serviceFee,
-        discount: 0,
-        total: subtotal + shippingFee + serviceFee,
-
+        customerName: customerName || "Pelanggan",
+        customerPhone: customerPhone || "",
+        address: address || "",
+        addressBenchmark: addressBenchmark || "",
+        area: area || "",
+        service: service || "",
+        orderNotes: orderNotes || "",
+        voucher: voucher || null,
+        discount: Number(discount) || 0,
+        shippingFee: Number(shippingFee) || 0,
+        serviceFee: Number(serviceFee) || 2000,
+        paymentMethod: paymentMethod || "gopay",
+        totalPrice: Number(totalPrice) || 0,
+        status: "PENDING",
         items: {
-          create: menus.map((menu) => ({
-            menuId: menu.id,
-            name: menu.name,
-            price: menu.price,
-            qty: quantities.get(menu.id)!,
-          })),
+          create: items.map(
+            (item: {
+              menuId?: number;
+              name: string;
+              price: number;
+              qty: number;
+            }) => ({
+              menuId: item.menuId ? Number(item.menuId) : null,
+              name: item.name,
+              price: Number(item.price),
+              qty: Number(item.qty),
+            })
+          ),
         },
       },
-
       include: {
         items: true,
       },
     });
 
-    return NextResponse.json(order, {
-      status: 201,
-    });
-  } catch {
+    return NextResponse.json(newOrder, { status: 201 });
+  } catch (error) {
+    console.error("Gagal membuat pesanan:", error);
     return NextResponse.json(
-      { error: "Gagal menyimpan pesanan" },
+      { error: "Gagal menyimpan pesanan di database." },
       { status: 500 }
     );
   }
 }
 
-// Mengambil seluruh pesanan (Admin)
-export async function GET(req: NextRequest) {
-  if (
-    !process.env.ADMIN_KEY ||
-    req.headers.get("x-admin-key") !== process.env.ADMIN_KEY
-  ) {
+export async function GET() {
+  try {
+    const orders = await prisma.order.findMany({
+      include: {
+        items: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    return NextResponse.json(orders);
+  } catch {
     return NextResponse.json(
-      { error: "Unauthorized" },
-      { status: 401 }
+      { error: "Gagal mengambil daftar pesanan." },
+      { status: 500 }
     );
   }
-
-  const orders = await prisma.order.findMany({
-    include: {
-      items: true,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
-
-  return NextResponse.json(orders);
 }

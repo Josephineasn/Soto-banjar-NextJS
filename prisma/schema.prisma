@@ -1,4 +1,3 @@
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,59 +8,54 @@ datasource db {
 }
 
 model Menu {
-  id            Int     @id @default(autoincrement())
+  id            Int      @id @default(autoincrement())
   name          String
   category      String
   price         Int
-  rating        Float   @default(0)
-  spicyLevel    String  @default("Tidak Pedas")
-  calories      String  @default("-")
-  packagingInfo String  @default("-")
+  rating        Float    @default(0)
+  spicyLevel    String   @default("Tidak Pedas")
+  calories      String   @default("-")
+  packagingInfo String   @default("-")
   description   String
-  spices        String  @default("[]")
+  spices        String   @default("[]")
   image         String
-  popular       Boolean @default(false)
-  available     Boolean @default(true)
+  popular       Boolean  @default(false)
+  available     Boolean  @default(true)
 
   orderItems OrderItem[]
   reviews    Review[]
 }
 
 model Order {
-  id               String   @id @default(cuid())
-  recipientName    String
-  recipientPhone   String
-  fullAddress      String
-  addressBenchmark String   @default("")
-  areaName         String
-  courierName      String
-  deliveryTime     String   @default("Secepatnya")
-  paymentMethod    String
-  notes            String   @default("")
-
-  subtotal    Int
-  shippingFee Int
-  serviceFee  Int      @default(2000)
-  discount    Int      @default(0)
-  total       Int
-
-  status    String   @default("PENDING")
-  createdAt DateTime @default(now())
-
-  items OrderItem[]
+  id               String      @id @default(cuid())
+  customerName     String?     @default("")
+  customerPhone    String?     @default("")
+  address          String?     @default("")
+  addressBenchmark String?     @default("")
+  area             String?     @default("")
+  service          String?     @default("")
+  orderNotes       String?     @default("")
+  voucher          String?
+  discount         Int?        @default(0)
+  shippingFee      Int?        @default(0)
+  serviceFee       Int?        @default(2000)
+  paymentMethod    String?     @default("gopay")
+  totalPrice       Int?        @default(0)
+  status           String      @default("PENDING")
+  items            OrderItem[]
+  createdAt        DateTime    @default(now())
 }
 
 model OrderItem {
-  id      Int    @id @default(autoincrement())
-  orderId String
-  menuId  Int?
-  name    String
-  price   Int
-  qty     Int
-
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  menu Menu? @relation(fields: [menuId], references: [id], onDelete: SetNull)
+  id        Int      @id @default(autoincrement())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuId    Int?
+  menu      Menu?    @relation(fields: [menuId], references: [id])
+  name      String
+  price     Int
+  qty       Int
+  createdAt DateTime @default(now())
 }
 
 model Review {
@@ -73,4 +67,20 @@ model Review {
   createdAt DateTime @default(now())
 
   menu Menu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+}
+
+model DeliveryArea {
+  id        Int      @id @default(autoincrement())
+  name      String
+  price     Int
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model ShippingService {
+  id         Int      @id @default(autoincrement())
+  name       String
+  extraPrice Int
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
 }

@@ -7,14 +7,15 @@ import Herobanner from "@/components/Herobanner";
 import MenuCard from "@/components/MenuCard";
 import MenuDetailModal from "@/components/MenuDetailModal";
 import CartDrawer from "@/components/CartDrawer";
+import OrderHistoryModal from "@/components/OrderHistoryModal";
 import type { MenuItem, CartItem } from "@/types";
 
 const categories = [
-  { id: "semua", name: "Semua Menu", icon: "✨" },
-  { id: "makanan", name: "Makanan", icon: "🍲" },
-  { id: "cemilan", name: "Cemilan", icon: "🍌" },
-  { id: "pendamping", name: "Pendamping", icon: "🥚" },
-  { id: "minuman", name: "Minuman", icon: "🍹" },
+  { id: "semua", name: "Semua Menu"},
+  { id: "makanan", name: "Makanan"},
+  { id: "cemilan", name: "Cemilan"},
+  { id: "pendamping", name: "Pendamping"},
+  { id: "minuman", name: "Minuman"},
 ];
 
 const faqs = [
@@ -53,6 +54,8 @@ export default function Home() {
 
   const [selectedMenu, setSelectedMenu] = useState<MenuItem | null>(null);
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
+
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   async function loadMenus() {
     try {
@@ -137,6 +140,10 @@ export default function Home() {
     setCart((previous) => previous.filter((item) => item.id !== id));
   }
 
+  function clearCart() {
+    setCart([]);
+  }
+
   const cartCount = cart.reduce((total, item) => total + item.qty, 0);
 
   function scrollToSection(id: string) {
@@ -153,7 +160,11 @@ export default function Home() {
           "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
       }}
     >
-      <Navbar cartCount={cartCount} onOpenCart={() => setCartOpen(true)} />
+      <Navbar
+        cartCount={cartCount}
+        onOpenCart={() => setCartOpen(true)}
+        onOpenHistory={() => setHistoryOpen(true)}
+      />
 
       <Herobanner onOrderNow={() => scrollToSection("menu")} />
 
@@ -196,7 +207,7 @@ export default function Home() {
                 marginBottom: "12px",
               }}
             >
-              <span>🌿</span> Resep Warisan Asli Banjar
+              Resep Warisan Asli Banjar
             </div>
             <h2
               style={{
@@ -237,7 +248,7 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Tab Filter Kategori */}
+        {/* Filter Kategori */}
         <div
           style={{
             display: "flex",
@@ -267,21 +278,20 @@ export default function Home() {
                   whiteSpace: "nowrap",
                   transition: "all 0.2s ease",
                   border: isSelected ? "1.5px solid #9D9167" : "1.5px solid #E8D1A7",
-                  background: isSelected ? "#9D9167" : "#ffffff", // Olive Harvest
+                  background: isSelected ? "#9D9167" : "#ffffff",
                   color: isSelected ? "#FAF6EE" : "#734F31",
                   boxShadow: isSelected
                     ? "0 6px 18px rgba(157, 145, 103, 0.35)"
                     : "0 2px 6px rgba(0, 0, 0, 0.02)",
                 }}
               >
-                <span>{item.icon}</span>
                 <span>{item.name}</span>
               </button>
             );
           })}
         </div>
 
-        {/* Grid Menu */}
+        {/* Menu */}
         {loading ? (
           <div
             style={{
@@ -394,7 +404,6 @@ export default function Home() {
                 boxShadow: "0 12px 30px rgba(0,0,0,0.3)",
               }}
             >
-              <span style={{ fontSize: "28px" }}>🥣</span>
               <div>
                 <h4 style={{ margin: 0, fontSize: "14px", fontWeight: "900", color: "#E8D1A7" }}>
                   100% Rempah Asli
@@ -455,7 +464,6 @@ export default function Home() {
                   padding: "18px",
                 }}
               >
-                <div style={{ fontSize: "24px", marginBottom: "8px" }}>🍗</div>
                 <h4 style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: "800", color: "#E8D1A7" }}>
                   Ayam Kampung Asli
                 </h4>
@@ -472,7 +480,6 @@ export default function Home() {
                   padding: "18px",
                 }}
               >
-                <div style={{ fontSize: "24px", marginBottom: "8px" }}>🍊</div>
                 <h4 style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: "800", color: "#E8D1A7" }}>
                   Jeruk Kuit Segar
                 </h4>
@@ -674,7 +681,6 @@ export default function Home() {
               alignItems: "stretch",
             }}
           >
-
             <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
               <div
                 style={{
@@ -772,7 +778,7 @@ export default function Home() {
                         borderRadius: "20px",
                       }}
                     >
-                      🟢 Buka Hari Ini
+                      Buka Hari Ini
                     </span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px", color: "#734F31", marginBottom: "6px" }}>
@@ -874,7 +880,6 @@ export default function Home() {
             borderBottom: "1px solid rgba(232, 209, 167, 0.2)",
           }}
         >
-          
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
               <span style={{ fontSize: "28px" }}>🍲</span>
@@ -897,7 +902,7 @@ export default function Home() {
                 fontWeight: "700",
               }}
             >
-              🚚 Pesan Antar Wilayah Jabodetabek
+              Pesan Antar Wilayah Jabodetabek
             </div>
           </div>
 
@@ -1000,28 +1005,6 @@ export default function Home() {
             >
               Ikuti Kami
             </h4>
-            <div style={{ display: "flex", gap: "12px" }}>
-              {["📷", "📘", "🎵"].map((icon, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    width: "40px",
-                    height: "40px",
-                    borderRadius: "12px",
-                    backgroundColor: "rgba(232, 209, 167, 0.2)",
-                    border: "1px solid #E8D1A7",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: "pointer",
-                    fontSize: "16px",
-                    transition: "all 0.2s ease",
-                  }}
-                >
-                  {icon}
-                </div>
-              ))}
-            </div>
           </div>
         </div>
 
@@ -1030,18 +1013,27 @@ export default function Home() {
         </div>
       </footer>
 
+      {/* DETAIL MENU */}
       <MenuDetailModal
         item={selectedMenu}
         onClose={() => setSelectedMenu(null)}
         onAddToCart={directOrder}
       />
 
+      {/* CART DRAWER */}
       <CartDrawer
         isOpen={cartOpen}
         onClose={() => setCartOpen(false)}
         cart={cart}
         onUpdateQty={updateQty}
         onRemoveItem={removeItem}
+        onClearCart={clearCart}
+      />
+
+      {/* ORDER HISTORY */}
+      <OrderHistoryModal
+        isOpen={historyOpen}
+        onClose={() => setHistoryOpen(false)}
       />
     </main>
   );

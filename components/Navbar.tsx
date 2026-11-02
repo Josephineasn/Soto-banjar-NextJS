@@ -3,9 +3,14 @@
 interface NavbarProps {
     cartCount: number;
     onOpenCart: () => void;
+    onOpenHistory?: () => void;
 }
 
-    export default function Navbar({ cartCount, onOpenCart }: NavbarProps) {
+    export default function Navbar({
+    cartCount,
+    onOpenCart,
+    onOpenHistory,
+    }: NavbarProps) {
     const scrollTo = (id: string) => {
         if (id === "top") {
         window.scrollTo({ top: 0, behavior: "smooth" });
@@ -130,8 +135,36 @@ interface NavbarProps {
             ))}
             </nav>
 
-            {/* Tombol Keranjang */}
-            <div style={{ display: "flex", alignItems: "center" }}>
+            {/* Aksi Navbar: Tombol Riwayat & Keranjang */}
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <button
+                type="button"
+                onClick={onOpenHistory}
+                title="Lihat Riwayat Pesanan"
+                style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "9px 16px",
+                borderRadius: "12px",
+                backgroundColor: "rgba(254, 243, 199, 0.1)",
+                border: "1px solid rgba(254, 243, 199, 0.25)",
+                color: "#FEF3C7",
+                fontSize: "13px",
+                fontWeight: "700",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                }}
+                onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "rgba(254, 243, 199, 0.2)";
+                }}
+                onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "rgba(254, 243, 199, 0.1)";
+                }}
+            >
+                Riwayat Pesanan
+            </button>
+
             <button
                 type="button"
                 onClick={onOpenCart}
@@ -149,6 +182,12 @@ interface NavbarProps {
                 cursor: "pointer",
                 color: "#FEF3C7",
                 transition: "all 0.2s ease",
+                }}
+                onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "rgba(254, 243, 199, 0.2)";
+                }}
+                onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "rgba(254, 243, 199, 0.1)";
                 }}
             >
                 <svg
