@@ -2,58 +2,69 @@
 
 import React, { useEffect, useState } from "react";
 
-interface OrderHistoryItem {
+interface OrderItem {
   id: string;
-  customerName: string;
+  customerName?: string;
   customerPhone?: string;
-  address: string;
+  address?: string;
   area?: string;
   service?: string;
-  paymentMethod: string;
-  totalPrice: number;
+  paymentMethod?: string;
   status: string;
+  totalPrice: number;
   createdAt: string;
-  items: {
-    id: number;
-    name: string;
-    price: number;
-    qty: number;
-  }[];
+  items?: { name: string; qty: number; price: number }[];
 }
 
 interface OrderHistoryModalProps {
   isOpen: boolean;
   onClose: () => void;
+  currentUser?: { name: string; role: string } | null;
 }
 
-export default function OrderHistoryModal({ isOpen, onClose }: OrderHistoryModalProps) {
-  const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
+export default function OrderHistoryModal({
+  isOpen,
+  onClose,
+  currentUser,
+}: OrderHistoryModalProps) {
+  const [orders, setOrders] = useState<OrderItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!isOpen) return;
+
     async function fetchOrders() {
-      if (!isOpen) return;
       try {
         setLoading(true);
-        setError("");
         const res = await fetch("/api/orders", { cache: "no-store" });
-        if (!res.ok) throw new Error("Gagal mengambil data pesanan.");
-        const data = await res.json();
-        setOrders(data);
-      } catch (err: unknown) {
-        if (err instanceof Error) {
-          setError(err.message);
-        } else {
-          setError("Terjadi kesalahan saat memuat pesanan.");
+        if (res.ok) {
+          const allOrders: OrderItem[] = await res.json();
+
+          // Saring pesanan HANYA milik akun yang sedang login
+          const activeUser =
+            currentUser?.name || localStorage.getItem("soto_customer_user");
+
+          if (activeUser && Array.isArray(allOrders)) {
+            const userOrders = allOrders.filter((ord) => {
+              const nameMatch = ord.customerName
+                ?.toLowerCase()
+                .includes(activeUser.toLowerCase());
+              return Boolean(nameMatch);
+            });
+            setOrders(userOrders);
+          } else {
+            setOrders([]);
+          }
         }
+      } catch (err) {
+        console.error(err);
       } finally {
         setLoading(false);
       }
     }
 
     void fetchOrders();
-  }, [isOpen]);
+  }, [isOpen, currentUser]);
 
   if (!isOpen) return null;
 
@@ -62,8 +73,8 @@ export default function OrderHistoryModal({ isOpen, onClose }: OrderHistoryModal
       style={{
         position: "fixed",
         inset: 0,
-        backgroundColor: "rgba(0, 0, 0, 0.6)",
-        zIndex: 110,
+        backgroundColor: "rgba(0, 0, 0, 0.65)",
+        zIndex: 100,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -74,203 +85,136 @@ export default function OrderHistoryModal({ isOpen, onClose }: OrderHistoryModal
       <div
         style={{
           width: "100%",
-          maxWidth: "600px",
+          maxWidth: "520px",
           maxHeight: "85vh",
-          backgroundColor: "#ffffff",
+          backgroundColor: "#FFFFFF",
           borderRadius: "20px",
+          border: "1.5px solid #E8D1A7",
+          boxShadow: "0 20px 50px rgba(0, 0, 0, 0.25)",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          boxShadow: "0 20px 40px rgba(0,0,0,0.25)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Header */}
         <div
           style={{
             padding: "20px 24px",
-            borderBottom: "1.5px solid #EFE6D8",
+            borderBottom: "1px solid #FAF6EE",
             display: "flex",
-            alignItems: "center",
             justifyContent: "space-between",
+            alignItems: "center",
             backgroundColor: "#FAF6EE",
           }}
         >
-          <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "900", color: "#734F31" }}>
-            Riwayat Pesanan
-          </h3>
+          <div>
+            <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "900", color: "#734F31" }}>
+              Riwayat Pesanan
+            </h3>
+            {currentUser && (
+              <span style={{ fontSize: "11px", color: "#9D9167", fontWeight: "700" }}>
+                Akun: {currentUser.name}
+              </span>
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}
             style={{
-              width: "36px",
-              height: "36px",
-              borderRadius: "10px",
-              border: "1.5px solid #E8D1A7",
-              background: "#ffffff",
-              cursor: "pointer",
-              fontSize: "16px",
-              fontWeight: "bold",
+              background: "none",
+              border: "none",
+              fontSize: "18px",
               color: "#734F31",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
+              cursor: "pointer",
+              fontWeight: "900",
             }}
           >
             ✕
           </button>
         </div>
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+        {/* List Riwayat Pesanan */}
+        <div style={{ padding: "20px 24px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "16px" }}>
           {loading ? (
-            <div style={{ textAlign: "center", padding: "50px 0", color: "#9D9167", fontWeight: "700" }}>
-              Memuat riwayat pesanan...
-            </div>
-          ) : error ? (
-            <div
-              style={{
-                padding: "16px",
-                backgroundColor: "#FEF2F2",
-                border: "1px solid #FECACA",
-                borderRadius: "12px",
-                color: "#DC2626",
-                fontSize: "13px",
-                textAlign: "center",
-              }}
-            >
-              {error}
+            <div style={{ textAlign: "center", padding: "40px", color: "#9D9167", fontSize: "13px" }}>
+              Memuat riwayat transaksi Anda...
             </div>
           ) : orders.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "50px 10px", color: "#9D9167" }}>
-              <h4 style={{ margin: "0 0 6px", color: "#734F31", fontWeight: "800", fontSize: "16px" }}>
-                Belum Ada Riwayat Pesanan
-              </h4>
-              <p style={{ margin: 0, fontSize: "13px" }}>
-                Pesanan yang Anda buat akan tercatat di sini.
-              </p>
+            <div style={{ textAlign: "center", padding: "40px 20px", color: "#64748B", fontSize: "13px" }}>
+              Belum ada riwayat pesanan untuk akun <strong>{currentUser?.name || "ini"}</strong>.
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              {orders.map((order) => {
-                const dateFormatted = new Date(order.createdAt).toLocaleDateString("id-ID", {
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                });
+            orders.map((ord) => (
+              <div
+                key={ord.id}
+                style={{
+                  border: "1.5px solid #E8D1A7",
+                  borderRadius: "14px",
+                  padding: "18px",
+                  backgroundColor: "#FFFFFF",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.02)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
+                  <div>
+                    <span style={{ fontSize: "10px", color: "#94A3B8", textTransform: "uppercase", fontWeight: "800", display: "block" }}>
+                      ID PESANAN
+                    </span>
+                    <strong style={{ fontSize: "13px", color: "#1E293B" }}>{ord.id}</strong>
+                    <span style={{ fontSize: "10px", color: "#64748B", display: "block", marginTop: "2px" }}>
+                      {ord.createdAt}
+                    </span>
+                  </div>
 
-                return (
-                  <div
-                    key={order.id}
+                  <span
                     style={{
-                      border: "1.5px solid #E8D1A7",
-                      borderRadius: "16px",
-                      padding: "18px",
-                      backgroundColor: "#FAF6EE",
-                      boxShadow: "0 4px 12px rgba(115, 79, 49, 0.04)",
+                      fontSize: "11px",
+                      fontWeight: "900",
+                      padding: "3px 10px",
+                      borderRadius: "6px",
+                      backgroundColor: ord.status === "SELESAI" ? "#DCFCE7" : "#E0F2FE",
+                      color: ord.status === "SELESAI" ? "#166534" : "#0284C7",
                     }}
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                        marginBottom: "12px",
-                        borderBottom: "1px dashed #E8D1A7",
-                        paddingBottom: "10px",
-                      }}
-                    >
-                      <div>
-                        <span style={{ fontSize: "11px", fontWeight: "800", color: "#9D9167", display: "block" }}>
-                          ID PESANAN
-                        </span>
-                        <strong style={{ fontSize: "14px", color: "#734F31" }}>
-                          {order.id}
-                        </strong>
-                        <span style={{ fontSize: "11px", color: "#8C7A6B", display: "block", marginTop: "2px" }}>
-                          {dateFormatted} WIB
-                        </span>
+                    {ord.status}
+                  </span>
+                </div>
+
+                <div style={{ borderTop: "1px dashed #E2E8F0", paddingTop: "10px", marginBottom: "10px", fontSize: "12px", color: "#475569" }}>
+                  <span style={{ fontSize: "10px", fontWeight: "800", color: "#94A3B8", textTransform: "uppercase" }}>
+                    DAFTAR MENU:
+                  </span>
+                  {ord.items && ord.items.length > 0 ? (
+                    ord.items.map((it, idx) => (
+                      <div key={idx} style={{ marginTop: "4px" }}>
+                        • {it.qty}x {it.name} — Rp {(it.price * it.qty).toLocaleString("id-ID")}
                       </div>
+                    ))
+                  ) : (
+                    <div style={{ marginTop: "4px" }}>• Paket Menu Soto Banjar</div>
+                  )}
+                </div>
 
-                      <span
-                        style={{
-                          backgroundColor:
-                            order.status === "SELESAI"
-                              ? "#DCFCE7"
-                              : order.status === "DIPROSES"
-                              ? "#FEF3C7"
-                              : "#DBEAFE",
-                          color:
-                            order.status === "SELESAI"
-                              ? "#166534"
-                              : order.status === "DIPROSES"
-                              ? "#92400E"
-                              : "#1E40AF",
-                          padding: "4px 10px",
-                          borderRadius: "20px",
-                          fontSize: "11px",
-                          fontWeight: "800",
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        {order.status}
-                      </span>
-                    </div>
+                <div style={{ fontSize: "11px", color: "#64748B", lineHeight: "1.6", borderTop: "1px dashed #E2E8F0", paddingTop: "8px" }}>
+                  <div>Penerima: <strong>{ord.customerName}</strong> {ord.customerPhone && `(${ord.customerPhone})`}</div>
+                  {ord.address && <div>Alamat: {ord.address}</div>}
+                  {ord.area && <div>Area: {ord.area}</div>}
+                </div>
 
-                    <div style={{ marginBottom: "12px" }}>
-                      <span style={{ fontSize: "11px", fontWeight: "800", color: "#9D9167", textTransform: "uppercase" }}>
-                        Daftar Menu:
-                      </span>
-                      <ul style={{ margin: "6px 0 0", paddingLeft: "18px", fontSize: "13px", color: "#734F31" }}>
-                        {order.items?.map((item) => (
-                          <li key={item.id} style={{ marginBottom: "4px" }}>
-                            <strong>{item.qty}x</strong> {item.name} — Rp {(item.price * item.qty).toLocaleString("id-ID")}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: "12px",
-                        color: "#734F31",
-                        backgroundColor: "#ffffff",
-                        padding: "10px 14px",
-                        borderRadius: "10px",
-                        border: "1px solid #EFE6D8",
-                        marginBottom: "12px",
-                        lineHeight: "1.6",
-                      }}
-                    >
-                      <div><strong>Penerima:</strong> {order.customerName} {order.customerPhone ? `(${order.customerPhone})` : ""}</div>
-                      <div><strong>Alamat:</strong> {order.address}</div>
-                      {order.area && <div><strong>Area:</strong> {order.area}</div>}
-                      {order.service && <div><strong>Layanan:</strong> {order.service}</div>}
-                    </div>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        borderTop: "1px solid #E8D1A7",
-                        paddingTop: "10px",
-                      }}
-                    >
-                      <span style={{ fontSize: "12px", color: "#9D9167", fontWeight: "700" }}>
-                        Metode: <strong style={{ color: "#734F31" }}>{order.paymentMethod.toUpperCase()}</strong>
-                      </span>
-                      <div style={{ textAlign: "right" }}>
-                        <span style={{ fontSize: "11px", color: "#9D9167", display: "block" }}>Total Biaya</span>
-                        <strong style={{ fontSize: "16px", color: "#734F31", fontWeight: "900" }}>
-                          Rp {order.totalPrice.toLocaleString("id-ID")}
-                        </strong>
-                      </div>
-                    </div>
+                <div style={{ marginTop: "12px", borderTop: "1.5px solid #F1F5F9", paddingTop: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: "11px", fontWeight: "700", color: "#734F31" }}>
+                    Metode: {ord.paymentMethod || "QRIS / VA"}
+                  </span>
+                  <div style={{ textAlign: "right" }}>
+                    <span style={{ fontSize: "10px", color: "#94A3B8", display: "block" }}>Total Biaya</span>
+                    <strong style={{ fontSize: "15px", color: "#734F31", fontWeight: "900" }}>
+                      Rp {ord.totalPrice.toLocaleString("id-ID")}
+                    </strong>
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              </div>
+            ))
           )}
         </div>
       </div>

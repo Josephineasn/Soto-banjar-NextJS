@@ -1,66 +1,103 @@
-import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
-// Mengambil review berdasarkan menu
-export async function GET(req: NextRequest) {
-  const menuId = Number(
-    req.nextUrl.searchParams.get("menuId")
-  );
+// GET
+export async function GET() {
+  try {
+    const reviews = await prisma.review.findMany({
+      orderBy: { createdAt: "desc" },
+    });
 
-  if (!Number.isInteger(menuId) || menuId < 1) {
+    return NextResponse.json(reviews);
+  } catch (error) {
+    console.error("Gagal mengambil ulasan:", error);
     return NextResponse.json(
-      { error: "menuId diperlukan" },
-      { status: 400 }
+      { error: "Gagal mengambil data ulasan." },
+      { status: 500 }
     );
   }
-
-  const reviews = await prisma.review.findMany({
-    where: { menuId },
-    orderBy: {
-      createdAt: "desc",
-    },
-    take: 30,
-  });
-
-  return NextResponse.json(reviews);
 }
 
-// Menambahkan review
+// POST: Menyimpan ulasan dari customer
 export async function POST(req: NextRequest) {
-  const body = await req.json();
-
-  if (
-    !Number.isInteger(body.menuId) ||
-    !Number.isInteger(body.rating) ||
-    body.rating < 1 ||
-    body.rating > 5 ||
-    !body.name?.trim() ||
-    !body.comment?.trim() ||
-    body.comment.length > 500
-  ) {
-    return NextResponse.json(
-      { error: "Ulasan tidak valid" },
-      { status: 400 }
-    );
-  }
-
   try {
-    const review = await prisma.review.create({
+    const body = await req.json();
+    const { name, city, rating, comment, menuId } = body;
+
+    if (!name || !comment) {
+      return NextResponse.json(
+        { error: "Nama dan komentar ulasan wajib diisi." },
+        { status: 400 }
+      );
+    }
+
+    const newReview = await prisma.review.create({
       data: {
-        menuId: body.menuId,
-        name: body.name.trim().slice(0, 80),
-        rating: body.rating,
-        comment: body.comment.trim(),
+        name: String(name).trim(),
+        city: city ? String(city).trim() : "Jakarta",
+        rating: Number(rating) || 5,
+        comment: String(comment).trim(),
+        ...(menuId ? { menuId: Number(menuId) } : {}),
       },
     });
 
-    return NextResponse.json(review, {
-      status: 201,
-    });
-  } catch {
+    return NextResponse.json(newReview, { status: 201 });
+  } catch (error) {
+    console.error("Gagal menyimpan ulasan baru:", error);
     return NextResponse.json(
-      { error: "Menu tidak ditemukan" },
-      { status: 404 }
+      { error: "Gagal menyimpan ulasan ke database." },
+      { status: 500 }
+    );
+  }
+}
+
+// PATCH: Membalas atau mengedit balasan ulasan dari admin
+export async function PATCH(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { id, reply } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: "ID ulasan wajib disertakan." }, { status: 400 });
+    }
+
+    const updatedReview = await prisma.review.update({
+      where: { id: String(id) },
+      data: {
+        reply: reply ? String(reply).trim() : null,
+      },
+    });
+
+    return NextResponse.json(updatedReview);
+  } catch (error) {
+    console.error("Gagal memperbarui ulasan:", error);
+    return NextResponse.json(
+      { error: "Gagal memperbarui ulasan." },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE: Menghapus ulasan dari panel admin
+export async function DELETE(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ error: "ID ulasan tidak ditemukan." }, { status: 400 });
+    }
+
+    await prisma.review.delete({
+      where: { id: String(id) },
+    });
+
+    return NextResponse.json({ message: "Ulasan berhasil dihapus." });
+  } catch (error) {
+    console.error("Gagal menghapus ulasan:", error);
+    return NextResponse.json(
+      { error: "Gagal menghapus ulasan dari database." },
+      { status: 500 }
     );
   }
 }

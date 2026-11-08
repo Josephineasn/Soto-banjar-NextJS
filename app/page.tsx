@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import AuthModal from "@/components/AuthModal";
 import Navbar from "@/components/Navbar";
 import Herobanner from "@/components/Herobanner";
 import MenuCard from "@/components/MenuCard";
@@ -23,6 +24,10 @@ const categories = [
 ];
 
 export default function Home() {
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authWarningOpen, setAuthWarningOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{ name: string; role: string } | null>(null);
+
   const [menus, setMenus] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -48,6 +53,38 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
+  }
+
+  useEffect(() => {
+    async function checkSession() {
+      try {
+        const res = await fetch("/api/auth/me");
+        const data = await res.json().catch(() => null);
+        if (data?.user) {
+          setCurrentUser(data.user);
+          localStorage.setItem("soto_customer_user", data.user.name);
+          return;
+        }
+      } catch {}
+
+      const stored = localStorage.getItem("soto_customer_user");
+      if (stored) {
+        setCurrentUser({
+          name: stored,
+          role: stored.toLowerCase() === "admin" ? "ADMIN" : "CUSTOMER",
+        });
+      }
+    }
+    void checkSession();
+  }, []);
+
+  async function handleLogout() {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {}
+    localStorage.removeItem("soto_customer_user");
+    setCurrentUser(null);
+    setCart([]);
   }
 
   useEffect(() => {
@@ -87,7 +124,12 @@ export default function Home() {
     });
   }, [menus, category, searchQuery]);
 
+  // Klik Tambah ke Keranjang saat belum login
   function addToCartOnly(item: MenuItem) {
+    if (!currentUser) {
+      setAuthWarningOpen(true);
+      return;
+    }
     if (item.available === false) return;
     setCart((prev) => {
       const existing = prev.find((ci) => ci.id === item.id);
@@ -98,7 +140,12 @@ export default function Home() {
     });
   }
 
+  // Klik + Pesan saat belum login
   function directOrder(item: MenuItem) {
+    if (!currentUser) {
+      setAuthWarningOpen(true);
+      return;
+    }
     if (item.available === false) return;
     addToCartOnly(item);
     setSelectedMenu(null);
@@ -138,13 +185,137 @@ export default function Home() {
     >
       <Navbar
         cartCount={cartCount}
-        onOpenCart={() => setCartOpen(true)}
-        onOpenHistory={() => setHistoryOpen(true)}
+        onOpenCart={() => {
+          if (!currentUser) {
+            setAuthWarningOpen(true);
+          } else {
+            setCartOpen(true);
+          }
+        }}
+        onOpenHistory={() => {
+          if (!currentUser) {
+            setAuthWarningOpen(true);
+          } else {
+            setHistoryOpen(true);
+          }
+        }}
+        onOpenAuth={() => setAuthOpen(true)}
+        currentUser={currentUser}
+        onLogout={handleLogout}
+      />
+
+      {/* POPUP WAJIB LOGIN */}
+      {authWarningOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.65)",
+            zIndex: 140,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+            fontFamily: "system-ui, -apple-system, sans-serif",
+          }}
+          onClick={() => setAuthWarningOpen(false)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: "420px",
+              backgroundColor: "#FFFFFF",
+              borderRadius: "20px",
+              padding: "36px 30px 28px",
+              textAlign: "center",
+              boxShadow: "0 25px 50px rgba(0, 0, 0, 0.25)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Ikon Gembok Kuning */}
+            <div
+              style={{
+                width: "56px",
+                height: "56px",
+                borderRadius: "50%",
+                backgroundColor: "#FEF3C7",
+                color: "#D97706",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 18px",
+              }}
+            >
+              <svg width="26" height="26" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            </div>
+
+            <h3 style={{ margin: "0 0 10px", fontSize: "19px", fontWeight: "900", color: "#1E293B" }}>
+              Silakan Masuk / Buat Akun
+            </h3>
+            <p style={{ margin: "0 0 24px", fontSize: "13px", color: "#64748B", lineHeight: "1.6" }}>
+              Hanya pelanggan yang telah masuk akun yang dapat <strong>memesan sajian</strong> dan <strong>memberikan ulasan</strong> cita rasa restoran.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthWarningOpen(false);
+                  setAuthOpen(true);
+                }}
+                style={{
+                  width: "100%",
+                  padding: "12px",
+                  backgroundColor: "#734F31",
+                  color: "#FFFFFF",
+                  border: "none",
+                  borderRadius: "10px",
+                  fontSize: "13px",
+                  fontWeight: "800",
+                  cursor: "pointer",
+                }}
+              >
+                Masuk / Buat Akun Sekarang
+              </button>
+              <button
+                type="button"
+                onClick={() => setAuthWarningOpen(false)}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  backgroundColor: "#F1F5F9",
+                  color: "#475569",
+                  border: "none",
+                  borderRadius: "10px",
+                  fontSize: "12px",
+                  fontWeight: "700",
+                  cursor: "pointer",
+                }}
+              >
+                Nanti Saja
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL AUTH LOGIN / DAFTAR */}
+      <AuthModal
+        isOpen={authOpen}
+        onClose={() => setAuthOpen(false)}
+        onSuccess={(user) => {
+          setCurrentUser(user);
+          localStorage.setItem("soto_customer_user", user.name);
+          setAuthOpen(false);
+        }}
       />
 
       <Herobanner onOrderNow={() => scrollToSection("menu")} />
 
-      {/* SECTION MENU */}
+      {/* MENU */}
       <section
         id="menu"
         style={{
@@ -223,7 +394,7 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Tab Filter Kategori */}
+        {/* Filter Kategori */}
         <div
           style={{
             display: "flex",
@@ -299,13 +470,15 @@ export default function Home() {
         )}
       </section>
 
-      {/* SECTION MODULAR */}
       <Aboutsection />
-      <ReviewSection />
+      <ReviewSection
+        currentUser={currentUser}
+        onRequireAuth={() => setAuthWarningOpen(true)}
+      />
       <Faqsection />
       <Location />
 
-      {/* FOOTER TUNGGAL */}
+      {/* FOOTER */}
       <footer
         style={{
           backgroundColor: "#734F31",
@@ -375,7 +548,7 @@ export default function Home() {
               </li>
               <li>
                 <button type="button" onClick={() => scrollToSection("lokasi")} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", padding: 0 }}>
-                  Lokasi & Kontak
+                  Lokasi &amp; Kontak
                 </button>
               </li>
             </ul>
@@ -391,7 +564,7 @@ export default function Home() {
                 08:00 - 21:00 WIB
               </strong>
               <p style={{ margin: 0, fontSize: "12px", color: "#E8D1A7" }}>
-                Menerima Pesanan Catering & Hajatan
+                Menerima Pesanan Catering &amp; Hajatan
               </p>
             </div>
           </div>
@@ -402,7 +575,6 @@ export default function Home() {
         </div>
       </footer>
 
-      {/* MODAL & DRAWER */}
       <MenuDetailModal
         item={selectedMenu}
         onClose={() => setSelectedMenu(null)}
@@ -421,6 +593,7 @@ export default function Home() {
       <OrderHistoryModal
         isOpen={historyOpen}
         onClose={() => setHistoryOpen(false)}
+        currentUser={currentUser}
       />
     </main>
   );

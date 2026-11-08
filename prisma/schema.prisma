@@ -7,23 +7,36 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("CUSTOMER")
+  createdAt DateTime @default(now())
+}
+
 model Menu {
-  id            Int      @id @default(autoincrement())
+  id            Int         @id @default(autoincrement())
   name          String
   category      String
   price         Int
-  rating        Float    @default(0)
-  spicyLevel    String   @default("Tidak Pedas")
-  calories      String   @default("-")
-  packagingInfo String   @default("-")
   description   String
-  spices        String   @default("[]")
   image         String
-  popular       Boolean  @default(false)
-  available     Boolean  @default(true)
+  spices        String?
+  available     Boolean     @default(true)
+  rating        Float       @default(5.0)
+  popular       Boolean     @default(false)
+  packagingInfo String      @default("Kemasan thermal pouch tahan panas")
 
-  orderItems OrderItem[]
-  reviews    Review[]
+  calories      String      @default("350 kkal")
+  spicyLevel    String      @default("Tidak Pedas")
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @default(now()) @updatedAt
+  orderItems    OrderItem[]
+  reviews       Review[]
 }
 
 model Order {
@@ -59,14 +72,17 @@ model OrderItem {
 }
 
 model Review {
-  id        Int      @id @default(autoincrement())
-  menuId    Int
+  id        String   @id @default(cuid())
   name      String
-  rating    Int
+  city      String   @default("Jakarta")
+  rating    Int      @default(5)
   comment   String
+  reply     String?
   createdAt DateTime @default(now())
 
-  menu Menu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  // Relasi ke Menu
+  menuId    Int?
+  menu      Menu?    @relation(fields: [menuId], references: [id], onDelete: Cascade)
 }
 
 model DeliveryArea {
