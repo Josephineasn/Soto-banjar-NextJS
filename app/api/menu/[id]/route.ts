@@ -1,108 +1,94 @@
-import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
-const authorized = (req: NextRequest) => {
-  return (
-    !!process.env.ADMIN_KEY &&
-    req.headers.get("x-admin-key") === process.env.ADMIN_KEY
-  );
-};
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const menuId = parseInt(id, 10);
 
-// Edit menu
+    if (isNaN(menuId)) {
+      return NextResponse.json({ error: "ID menu tidak valid." }, { status: 400 });
+    }
+
+    const menu = await prisma.menu.findUnique({
+      where: { id: menuId },
+      include: { reviews: true },
+    });
+
+    if (!menu) {
+      return NextResponse.json({ error: "Menu tidak ditemukan." }, { status: 404 });
+    }
+
+    return NextResponse.json(menu);
+  } catch (error) {
+    console.error("Gagal mengambil detail menu:", error);
+    return NextResponse.json({ error: "Terjadi kesalahan server." }, { status: 500 });
+  }
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!authorized(req)) {
-    return NextResponse.json(
-      { error: "Unauthorized" },
-      { status: 401 }
-    );
-  }
-
-  const id = Number((await params).id);
-  const body = await req.json();
-
-  if (!Number.isInteger(id) || id < 1) {
-    return NextResponse.json(
-      { error: "ID invalid" },
-      { status: 400 }
-    );
-  }
-
-  const data: Record<string, unknown> = {};
-
-  const allowedFields = [
-    "name",
-    "category",
-    "description",
-    "image",
-    "popular",
-    "available",
-    "price",
-  ];
-
-  for (const key of allowedFields) {
-    if (key in body) {
-      data[key] = body[key];
-    }
-  }
-
-  if ("price" in data) {
-    data.price = Number(data.price);
-
-    if (
-      !Number.isInteger(data.price) ||
-      Number(data.price) < 0
-    ) {
-      return NextResponse.json(
-        { error: "Harga invalid" },
-        { status: 400 }
-      );
-    }
-  }
-
   try {
-    const menu = await prisma.menu.update({
-      where: { id },
-      data,
+    const { id } = await params;
+    const menuId = parseInt(id, 10);
+
+    if (isNaN(menuId)) {
+      return NextResponse.json({ error: "ID menu tidak valid." }, { status: 400 });
+    }
+
+    const body = await req.json();
+
+    const updatedMenu = await prisma.menu.update({
+      where: { id: menuId },
+      data: {
+        ...(body.name && { name: String(body.name).trim() }),
+        ...(body.category && { category: body.category }),
+        ...(body.price !== undefined && { price: Number(body.price) }),
+        ...(body.description && { description: String(body.description).trim() }),
+        ...(body.image && { image: String(body.image).trim() }),
+        ...(body.calories && { calories: body.calories }),
+        ...(body.spicyLevel && { spicyLevel: body.spicyLevel }),
+        ...(body.popular !== undefined && { popular: Boolean(body.popular) }),
+        ...(body.available !== undefined && { available: Boolean(body.available) }),
+        ...(body.packagingInfo && { packagingInfo: body.packagingInfo }),
+        ...(body.rating !== undefined && { rating: Number(body.rating) }),
+      },
     });
 
-    return NextResponse.json(menu);
-  } catch {
-    return NextResponse.json(
-      { error: "Menu tidak ditemukan" },
-      { status: 404 }
-    );
+    return NextResponse.json(updatedMenu);
+  } catch (error) {
+    console.error("Gagal update menu:", error);
+    return NextResponse.json({ error: "Gagal memperbarui menu." }, { status: 500 });
   }
 }
 
-// Hapus menu
 export async function DELETE(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!authorized(req)) {
-    return NextResponse.json(
-      { error: "Unauthorized" },
-      { status: 401 }
-    );
-  }
-
   try {
-    const id = Number((await params).id);
+    const { id } = await params;
+    const menuId = parseInt(id, 10);
+
+    if (isNaN(menuId)) {
+      return NextResponse.json({ error: "ID menu tidak valid." }, { status: 400 });
+    }
 
     await prisma.menu.delete({
-      where: { id },
+      where: { id: menuId },
     });
 
-    return NextResponse.json({
-      ok: true,
-    });
-  } catch {
+    return NextResponse.json({ message: "Menu berhasil dihapus dari katalog." });
+  } catch (error) {
+    console.error("Gagal menghapus menu:", error);
     return NextResponse.json(
-      { error: "Menu tidak ditemukan" },
-      { status: 404 }
+      { error: "Menu tidak ditemukan atau gagal dihapus." },
+      { status: 500 }
     );
   }
 }

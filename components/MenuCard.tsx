@@ -1,4 +1,5 @@
 "use client";
+
 import React, { useState } from "react";
 import { MenuItem } from "@/types";
 
@@ -57,6 +58,7 @@ interface MenuCardProps {
             }}
             onClick={() => onOpenDetail(item)}
             >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
                 src={item.image}
                 alt={item.name}
@@ -165,28 +167,31 @@ interface MenuCardProps {
             </div>
         </div>
 
-        {/* Footer */}
+        {/* Footer Kartu Menu */}
         <div
             style={{
-            padding: "14px 18px",
+            padding: "12px 14px",
             borderTop: "1px solid #F3EDE2",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
+            gap: "8px",
             backgroundColor: isAvailable ? "#FAF6EE" : "#F5F5F5",
             }}
         >
             <strong
             style={{
                 color: isAvailable ? "#B45309" : "#9E9E9E",
-                fontSize: "16px",
+                fontSize: "14px",
                 fontWeight: "900",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
             }}
             >
             Rp {item.price.toLocaleString("id-ID")}
             </strong>
 
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
             {/* Tombol Detail */}
             <button
                 type="button"
@@ -195,11 +200,12 @@ interface MenuCardProps {
                 background: "#FFFFFF",
                 border: "1px solid #E5D9C5",
                 borderRadius: "8px",
-                padding: "7px 11px",
-                fontSize: "12px",
+                padding: "6px 8px",
+                fontSize: "11px",
                 fontWeight: "700",
                 cursor: "pointer",
                 color: "#6D4C41",
+                whiteSpace: "nowrap",
                 }}
             >
                 Detail
@@ -216,20 +222,21 @@ interface MenuCardProps {
                 color: isAdded ? "#FFFFFF" : "#B45309",
                 border: `1.5px solid ${isAdded ? "#10B981" : "#D97706"}`,
                 borderRadius: "8px",
-                padding: "6px 9px",
-                fontSize: "12px",
+                padding: "5px 7px",
+                fontSize: "11px",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 cursor: isAvailable ? "pointer" : "not-allowed",
                 transition: "all 0.15s ease",
+                flexShrink: 0,
                 }}
             >
                 {isAdded ? (
                 <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    width="15"
-                    height="15"
+                    width="14"
+                    height="14"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -242,8 +249,8 @@ interface MenuCardProps {
                 ) : (
                 <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    width="15"
-                    height="15"
+                    width="14"
+                    height="14"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -270,11 +277,13 @@ interface MenuCardProps {
                 color: "#FFFFFF",
                 border: "none",
                 borderRadius: "8px",
-                padding: "7px 14px",
-                fontSize: "12px",
+                padding: "6px 10px",
+                fontSize: "11px",
                 fontWeight: "800",
                 cursor: isAvailable ? "pointer" : "not-allowed",
                 boxShadow: isAvailable ? "0 2px 6px rgba(180, 83, 9, 0.25)" : "none",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
                 }}
             >
                 {isAvailable ? "+ Pesan" : "Habis"}

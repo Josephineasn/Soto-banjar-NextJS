@@ -1,89 +1,108 @@
-
-import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
-export const dynamic = "force-dynamic";
-
-// GET - Mengambil menu dari database
+// GET: Ambil semua menu
 export async function GET() {
   try {
     const menus = await prisma.menu.findMany({
-      orderBy: {
-        id: "asc",
-      },
+      orderBy: { id: "asc" },
     });
-
-    const result = menus.map((menu) => ({
-      ...menu,
-      spices: JSON.parse(menu.spices),
-    }));
-
-    return NextResponse.json(result);
+    return NextResponse.json(menus);
   } catch (error) {
-    console.error(error);
-
-    return NextResponse.json(
-      { error: "Gagal mengambil data menu" },
-      { status: 500 }
-    );
+    console.error("Gagal mengambil menu:", error);
+    return NextResponse.json({ error: "Gagal mengambil data menu." }, { status: 500 });
   }
 }
 
-// POST - Menambahkan menu baru
+// POST: Tambah menu baru
 export async function POST(req: NextRequest) {
-  if (
-    !process.env.ADMIN_KEY ||
-    req.headers.get("x-admin-key") !== process.env.ADMIN_KEY
-  ) {
-    return NextResponse.json(
-      { error: "Akses ditolak" },
-      { status: 401 }
-    );
-  }
-
   try {
     const body = await req.json();
+    const { name, category, price, description, image, spicyLevel, calories, popular } = body;
 
-    if (
-      typeof body.name !== "string" ||
-      !body.name.trim() ||
-      !["makanan", "cemilan", "pendamping", "minuman"].includes(
-        body.category
-      ) ||
-      !Number.isInteger(body.price) ||
-      body.price < 0
-    ) {
-      return NextResponse.json(
-        { error: "Data menu tidak valid" },
-        { status: 400 }
-      );
+    if (!name || price === undefined) {
+      return NextResponse.json({ error: "Nama dan harga wajib diisi." }, { status: 400 });
     }
 
-    const menu = await prisma.menu.create({
+    const cleanCalories = calories
+      ? String(calories).replace(/kkal/gi, "").trim()
+      : "";
+
+    const newMenu = await prisma.menu.create({
       data: {
-        name: body.name.trim(),
-        category: body.category,
-        price: body.price,
-        description: String(body.description || ""),
-        image: String(body.image || ""),
-        rating: 0,
-        spicyLevel: String(body.spicyLevel || "Tidak Pedas"),
-        calories: String(body.calories || "-"),
-        packagingInfo: String(body.packagingInfo || "-"),
-        spices: JSON.stringify(
-          Array.isArray(body.spices) ? body.spices : []
-        ),
-        popular: Boolean(body.popular),
+        name: String(name).trim(),
+        category: category || "makanan",
+        price: Number(price),
+        description: description ? String(description).trim() : "",
+        image: image ? String(image).trim() : "",
+        spicyLevel: spicyLevel || "Tidak Pedas",
+        calories: cleanCalories,
+        popular: Boolean(popular),
         available: true,
       },
     });
 
-    return NextResponse.json(menu, { status: 201 });
+    return NextResponse.json(newMenu, { status: 201 });
   } catch (error) {
-    console.error(error);
+    console.error("Gagal menambahkan menu:", error);
+    return NextResponse.json({ error: "Gagal menambahkan menu." }, { status: 500 });
+  }
+}
 
+// PUT: Perbarui data menu (Edit Menu)
+export async function PUT(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { id, name, category, price, description, image, spicyLevel, calories, popular } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: "ID menu wajib disertakan." }, { status: 400 });
+    }
+
+    const cleanCalories = calories
+      ? String(calories).replace(/kkal/gi, "").trim()
+      : "";
+
+    const updatedMenu = await prisma.menu.update({
+      where: { id: Number(id) },
+      data: {
+        name: String(name).trim(),
+        category: category || "makanan",
+        price: Number(price),
+        description: description ? String(description).trim() : "",
+        image: image ? String(image).trim() : "",
+        spicyLevel: spicyLevel || "Tidak Pedas",
+        calories: cleanCalories,
+        popular: Boolean(popular),
+      },
+    });
+
+    return NextResponse.json(updatedMenu);
+  } catch (error) {
+    console.error("Gagal memperbarui menu:", error);
+    return NextResponse.json({ error: "Gagal memperbarui data menu ke database." }, { status: 500 });
+  }
+}
+
+// DELETE: Hapus menu
+export async function DELETE(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ error: "ID menu tidak ditemukan." }, { status: 400 });
+    }
+
+    await prisma.menu.delete({
+      where: { id: Number(id) },
+    });
+
+    return NextResponse.json({ message: "Menu berhasil dihapus." });
+  } catch (error) {
+    console.error("Gagal menghapus menu:", error);
     return NextResponse.json(
-      { error: "Gagal menambahkan menu" },
+      { error: "Gagal menghapus menu dari database." },
       { status: 500 }
     );
   }
