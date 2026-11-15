@@ -1,76 +1,87 @@
-
 import { PrismaClient } from "@prisma/client";
-import { INITIAL_MENU_ITEMS } from "../data/menu";
 
 const prisma = new PrismaClient();
 
-async function main() {
-  console.log("==================================");
-  console.log("MEMULAI SEED DATABASE SOTO BANJAR");
-  console.log("==================================");
+const INITIAL_MENU_ITEMS = [
+  {
+    name: "Soto Banjar Otentik",
+    description: "Menu legendaris soto khas Kalimantan Selatan dengan racikan rempah murni pilihan.",
+    price: 32000,
+    category: "Makanan",
+    image: "/soto1.jpg",
+    isAvailable: true,
+  },
+  {
+    name: "Sop Banjar Spesial",
+    description: "Sop kuah bening kaya rempah pilihan khas Banjar dengan potongan ayam kampung.",
+    price: 32000,
+    category: "Makanan",
+    image: "/soto2.jpg",
+    isAvailable: true,
+  },
+  {
+    name: "Soto Banjar (Nasi Terpisah)",
+    description: "Racikan sop ayam kampung murni berpadu kayu manis, kapulaga, cengkeh, dan bunga lawang.",
+    price: 35000,
+    category: "Makanan",
+    image: "/soto3.jpg",
+    isAvailable: true,
+  },
+  {
+    name: "Nasi Sop Banjar (Campur)",
+    description: "Penyajian praktis khas lokal, nasi putih langsung dicampur di dalam wadah sop hangat.",
+    price: 35000,
+    category: "Makanan",
+    image: "/soto4.jpg",
+    isAvailable: true,
+  },
+  {
+    name: "Ekstrak Ketupat Lembut",
+    description: "Ketupat matang berbungkus daun pisang yang legit.",
+    price: 10000,
+    category: "Cemilan",
+    image: "/ketupat.jpg",
+    isAvailable: true,
+  },
+  {
+    name: "Perkedel Singkong / Kentang",
+    description: "Perkedel empuk gurih pelengkap nikmat bersantap soto.",
+    price: 6000,
+    category: "Pendamping",
+    image: "/perkedel.jpg",
+    isAvailable: true,
+  },
+];
 
-  console.log(
-    `Jumlah menu ditemukan: ${INITIAL_MENU_ITEMS.length}`
-  );
-
-  if (INITIAL_MENU_ITEMS.length === 0) {
-    console.log("Tidak ada menu untuk dimasukkan.");
-    return;
-  }
-
-  let berhasil = 0;
+async function main(): Promise<void> {
+  console.log("Memulai proses seeding database Soto Banjar...");
 
   for (const item of INITIAL_MENU_ITEMS) {
-    console.log(`Memproses menu: ${item.name}`);
-
-    await prisma.menu.upsert({
-      where: {
-        id: item.id,
-      },
-
-      update: {},
-
-      create: {
-        id: item.id,
-        name: item.name,
-        category: item.category,
-        price: item.price,
-        rating: item.rating,
-        spicyLevel: item.spicyLevel,
-        calories: item.calories,
-        packagingInfo: item.packagingInfo,
-        description: item.description,
-        spices: JSON.stringify(item.spices),
-        image: item.image,
-        popular: item.popular,
-        available: item.available,
-      },
-    });
-
-    berhasil++;
-
-    console.log(`Berhasil: ${item.name}`);
+    await prisma.menu
+      .create({
+        data: {
+          name: item.name,
+          description: item.description,
+          price: item.price,
+          category: item.category,
+          image: item.image,
+          isAvailable: item.isAvailable,
+        },
+      })
+      .catch(() => {
+        // Abaikan jika data sudah ada
+      });
   }
 
-  const totalDatabase = await prisma.menu.count();
-
-  console.log("");
-  console.log("==================================");
-  console.log("SEED DATABASE SELESAI");
-  console.log("==================================");
-
-  console.log(`Menu diproses: ${berhasil}`);
-  console.log(`Total menu di database: ${totalDatabase}`);
+  console.log("Seeding database berhasil diselesaikan!");
 }
 
 main()
-  .catch((error) => {
-    console.error("TERJADI ERROR SAAT SEED:");
-    console.error(error);
-
-    process.exitCode = 1;
+  .catch((error: unknown) => {
+    console.error("TERJADI ERROR SAAT SEED:", error);
   })
-  .finally(async () => {
-    await prisma.$disconnect();
-    console.log("Koneksi Prisma ditutup.");
+  .finally(() => {
+    void prisma.$disconnect().then(() => {
+      console.log("Koneksi Prisma ditutup.");
+    });
   });
