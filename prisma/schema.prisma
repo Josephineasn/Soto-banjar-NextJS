@@ -41,34 +41,35 @@ model Menu {
 
 model Order {
   id               String      @id @default(cuid())
-  customerName     String?     @default("")
-  customerPhone    String?     @default("")
-  address          String?     @default("")
-  addressBenchmark String?     @default("")
-  area             String?     @default("")
-  service          String?     @default("")
-  orderNotes       String?     @default("")
+  customerName     String
+  customerPhone    String?
+  area             String
+  address          String
+  addressBenchmark String?     @default("-")
+  orderNotes       String?     @default("-")
+  service          String      @default("Kurir Instant")
+  shippingFee      Int         @default(0)
+  serviceFee       Int         @default(0)
   voucher          String?
-  discount         Int?        @default(0)
-  shippingFee      Int?        @default(0)
-  serviceFee       Int?        @default(2000)
-  paymentMethod    String?     @default("gopay")
-  totalPrice       Int?        @default(0)
+  discount         Int         @default(0)
+  totalPrice       Int
+  paymentMethod    String
+  vaNumber         String?
   status           String      @default("PENDING")
-  items            OrderItem[]
   createdAt        DateTime    @default(now())
+  items            OrderItem[]
 }
 
 model OrderItem {
   id        Int      @id @default(autoincrement())
   orderId   String
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   menuId    Int?
-  menu      Menu?    @relation(fields: [menuId], references: [id])
   name      String
   price     Int
   qty       Int
   createdAt DateTime @default(now())
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menu      Menu?    @relation(fields: [menuId], references: [id], onDelete: SetNull)
 }
 
 model Review {
@@ -99,4 +100,14 @@ model ShippingService {
   extraPrice Int
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
+}
+
+model LoginHistory {
+  id        Int      @id @default(autoincrement())
+  logCode   String   @default("LOG-0000")
+  username  String
+  role      String   @default("Customer")
+  status    String   @default("Berhasil")
+  device    String   @default("127.0.0.1 (Web Local)")
+  createdAt DateTime @default(now())
 }

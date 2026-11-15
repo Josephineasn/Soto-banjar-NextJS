@@ -157,7 +157,11 @@ export default function MenuDetailModal({
                     🌿 Racikan Rempah Khas:
                 </span>
                 <span style={{ color: "#ea580c", fontWeight: "600" }}>
-                    {item.spices && item.spices.length > 0 ? item.spices.join(" • ") : "Rempah Alami Nusantara"}
+                    {Array.isArray(item.spices)
+                    ? item.spices.join(" • ")
+                    : String(item.spices || "").trim().length > 0
+                    ? String(item.spices)
+                    : "Kayu Manis • Kapulaga • Cengkeh • Pekak • Pala"}
                 </span>
                 </div>
 

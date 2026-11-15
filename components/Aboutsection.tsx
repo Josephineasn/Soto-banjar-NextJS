@@ -1,144 +1,289 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 
 export default function Aboutsection() {
+  const [about, setAbout] = useState({
+    aboutBadge: "FILOSOFI RASA",
+    aboutTitle: "Warisan Cita Rasa Hangat dari Bumi Kalimantan",
+    aboutHighlight: "Bumi Kalimantan",
+    aboutParagraph1:
+      "Soto Banjar Selera Nusantara berakar dari kecintaan kami melestarikan kuliner legendaris khas Banjarmasin. Kunci kelezatan sup kami terletak pada simfoni rempah aromatik pilihan: kayu manis, cengkeh, kapulaga, pala, dan bunga lawang yang ditumis harum dengan mentega berkualitas sebelum dipadukan ke dalam rebusan kaldu murni.",
+    aboutParagraph2:
+      "Kami hanya menggunakan 100% ayam kampung segar yang menghasilkan kaldu gurih alami tanpa bahan pengawet. Disajikan lengkap bersama ketupat lembut, perkedel kentang legit, suwiran ayam tebal, telur bebek rebus, serta kucuran perasan jeruk kuit khas yang harum menyegarkan.",
+    feature1Title: "Ayam Kampung Asli",
+    feature1Desc:
+      "Daging manis alami berpadu kaldu gurih kaya nutrisi rempah.",
+    feature2Title: "Jeruk Kuit Segar",
+    feature2Desc: "Aroma sitrus khas Banjar yang autentik dan menyegarkan.",
+    aboutImage:
+      "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=900&auto=format&fit=crop&q=80",
+    aboutImageTitle: "100% Rempah Asli",
+    aboutImageCaption: "Resep Turun-Temurun Kalimantan",
+  });
+
+  useEffect(() => {
+    async function loadAbout() {
+      try {
+        const res = await fetch("/api/site-content", { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.about) setAbout((prev) => ({ ...prev, ...data.about }));
+          return;
+        }
+      } catch {
+        // Fallback localStorage
+      }
+      try {
+        const saved = localStorage.getItem("soto_site_content");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed?.about) setAbout((prev) => ({ ...prev, ...parsed.about }));
+        }
+      } catch {
+        // Abaikan
+      }
+    }
+
+    void loadAbout();
+    window.addEventListener("soto-content-updated", loadAbout);
+    return () => window.removeEventListener("soto-content-updated", loadAbout);
+  }, []);
+
+  function renderHighlightedText(text: string, highlight: string) {
+    if (!highlight || !text.includes(highlight)) {
+      return <span>{text}</span>;
+    }
+    const parts = text.split(highlight);
     return (
-        <section
-        id="tentang-kami"
+      <span>
+        {parts[0]}
+        <span style={{ color: "#EFE3C8" }}>{highlight}</span>
+        {parts[1]}
+      </span>
+    );
+  }
+
+  return (
+    <section
+      id="tentang"
+      style={{
+        backgroundColor: "#FAF6EE",
+        padding: "48px 24px",
+      }}
+    >
+      <div
         style={{
-            backgroundColor: "#734F31",
-            color: "#FAF6EE",
-            padding: "90px 24px",
-            borderTop: "3px solid #9D9167",
-            borderBottom: "3px solid #9D9167",
+          maxWidth: "1060px",
+          margin: "0 auto",
+          backgroundColor: "#362214",
+          borderRadius: "28px",
+          border: "2px solid #6D4C30",
+          padding: "48px 44px",
+          boxShadow: "0 22px 50px rgba(42, 26, 17, 0.22)",
         }}
-        >
+      >
         <div
-            style={{
-            maxWidth: "1200px",
-            margin: "0 auto",
+          style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-            gap: "55px",
+            gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+            gap: "44px",
             alignItems: "center",
-            }}
+          }}
         >
-            {/* Gambar & Label */}
-            <div style={{ position: "relative", width: "100%", maxWidth: "480px", margin: "0 auto" }}>
+          {/* KIRI: Bingkai Foto Persegi Membulat + Badge Overlay Kanan Bawah */}
+          <div
+            style={{
+              position: "relative",
+              borderRadius: "22px",
+              padding: "10px",
+              backgroundColor: "rgba(255, 255, 255, 0.05)",
+              border: "1.5px solid rgba(232, 209, 167, 0.3)",
+            }}
+          >
             <div
-                style={{
-                borderRadius: "28px",
+              style={{
+                position: "relative",
+                height: "330px",
+                width: "100%",
+                borderRadius: "16px",
                 overflow: "hidden",
-                border: "4px solid #E8D1A7",
-                boxShadow: "0 25px 50px rgba(0, 0, 0, 0.25)",
-                aspectRatio: "4/3",
-                }}
+              }}
             >
-                <img
-                src="https://indonesiakaya.com/wp-content/uploads/2023/04/sb_Artboard_5.jpg"
-                alt="Soto Banjar Otentik"
-                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                />
-            </div>
-
-            <div
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={about.aboutImage}
+                alt="Filosofi Soto Banjar"
                 style={{
-                position: "absolute",
-                bottom: "-20px",
-                right: "15px",
-                backgroundColor: "#734F31",
-                border: "1.5px solid #E8D1A7",
-                borderRadius: "18px",
-                padding: "14px 20px",
-                boxShadow: "0 12px 30px rgba(0,0,0,0.3)",
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
                 }}
-            >
-                <h4 style={{ margin: 0, fontSize: "14px", fontWeight: "900", color: "#E8D1A7" }}>
-                100% Rempah Asli
-                </h4>
-                <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#FAF6EE" }}>
-                Resep Turun-Temurun Kalimantan
-                </p>
-            </div>
-            </div>
+              />
 
-            {/* Narasi Filosofi */}
-            <div>
-            <div
+              {/* Kotak Overlay di Pojok Kanan Bawah Foto */}
+              <div
                 style={{
+                  position: "absolute",
+                  bottom: "14px",
+                  right: "14px",
+                  left: "90px",
+                  backgroundColor: "rgba(54, 34, 20, 0.92)",
+                  backdropFilter: "blur(6px)",
+                  border: "1px solid rgba(232, 209, 167, 0.35)",
+                  borderRadius: "12px",
+                  padding: "12px 16px",
+                  boxShadow: "0 8px 20px rgba(0, 0, 0, 0.35)",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 900,
+                    color: "#FAF6EE",
+                    marginBottom: "2px",
+                  }}
+                >
+                  {about.aboutImageTitle || "100% Rempah Asli"}
+                </div>
+                <div
+                  style={{
+                    fontSize: "11px",
+                    color: "#D5C5B3",
+                    fontWeight: 600,
+                  }}
+                >
+                  {about.aboutImageCaption || "Resep Turun-Temurun Kalimantan"}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* KANAN: Teks Filosofi Rasa & 2 Kotak Keunggulan */}
+          <div>
+            <div
+              style={{
                 display: "inline-block",
-                background: "rgba(232, 209, 167, 0.2)",
-                border: "1.5px solid #E8D1A7",
-                color: "#E8D1A7",
+                backgroundColor: "rgba(255, 255, 255, 0.08)",
+                border: "1px solid rgba(232, 209, 167, 0.4)",
+                color: "#EFE3C8",
                 fontSize: "11px",
-                fontWeight: "900",
-                textTransform: "uppercase",
-                padding: "6px 16px",
-                borderRadius: "30px",
-                marginBottom: "18px",
+                fontWeight: 800,
+                padding: "5px 14px",
+                borderRadius: "999px",
                 letterSpacing: "0.5px",
-                }}
+                marginBottom: "14px",
+              }}
             >
-                FILOSOFI RASA
+              {about.aboutBadge}
             </div>
 
             <h2
-                style={{
-                fontSize: "36px",
-                fontWeight: "900",
-                lineHeight: "1.25",
-                color: "#E8D1A7",
-                marginBottom: "20px",
-                }}
+              style={{
+                margin: "0 0 16px",
+                fontSize: "clamp(26px, 3vw, 34px)",
+                fontWeight: 900,
+                color: "#FAF6EE",
+                lineHeight: 1.22,
+              }}
             >
-                Warisan Cita Rasa Hangat dari <br />
-                <span style={{ color: "#FAF6EE" }}>Bumi Kalimantan</span>
+              {renderHighlightedText(about.aboutTitle, about.aboutHighlight)}
             </h2>
 
-            <p style={{ fontSize: "14px", lineHeight: "1.8", color: "#E8D1A7", marginBottom: "14px", opacity: 0.95 }}>
-                Soto Banjar Selera Nusantara berakar dari kecintaan kami melestarikan kuliner legendaris khas Banjarmasin. Kunci kelezatan sup kami terletak pada simfoni rempah aromatik pilihan: kayu manis, cengkeh, kapulaga, pala, dan bunga lawang yang ditumis harum dengan mentega berkualitas sebelum dipadukan ke dalam rebusan kaldu murni.
+            <p
+              style={{
+                margin: "0 0 14px",
+                fontSize: "13.5px",
+                color: "#D5C5B3",
+                lineHeight: 1.75,
+              }}
+            >
+              {about.aboutParagraph1}
             </p>
 
-            <p style={{ fontSize: "14px", lineHeight: "1.8", color: "#E8D1A7", marginBottom: "32px", opacity: 0.95 }}>
-                Kami hanya menggunakan 100% ayam kampung segar yang menghasilkan kaldu gurih alami tanpa bahan pengawet. Disajikan lengkap bersama ketupat lembut, perkedel kentang legit, suwiran ayam tebal, telur bebek rebus, serta kucuran perasan jeruk kuit khas yang harum menyegarkan.
+            <p
+              style={{
+                margin: "0 0 22px",
+                fontSize: "13.5px",
+                color: "#D5C5B3",
+                lineHeight: 1.75,
+              }}
+            >
+              {about.aboutParagraph2}
             </p>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "18px" }}>
-                <div
+            <div
+              style={{
+                borderTop: "1px solid rgba(232, 209, 167, 0.18)",
+                paddingTop: "18px",
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+                gap: "14px",
+              }}
+            >
+              <div
                 style={{
-                    background: "rgba(232, 209, 167, 0.1)",
-                    border: "1px solid #E8D1A7",
-                    borderRadius: "16px",
-                    padding: "18px",
+                  backgroundColor: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(232, 209, 167, 0.25)",
+                  borderRadius: "14px",
+                  padding: "14px 16px",
                 }}
+              >
+                <strong
+                  style={{
+                    fontSize: "13.5px",
+                    color: "#FAF6EE",
+                    display: "block",
+                    marginBottom: "4px",
+                  }}
                 >
-                <h4 style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: "800", color: "#E8D1A7" }}>
-                    Ayam Kampung Asli
-                </h4>
-                <p style={{ margin: 0, fontSize: "12px", color: "#FAF6EE", lineHeight: "1.5" }}>
-                    Daging manis alami berpadu kaldu gurih kaya nutrisi rempah.
-                </p>
-                </div>
+                  {about.feature1Title}
+                </strong>
+                <span
+                  style={{
+                    fontSize: "11.5px",
+                    color: "#C4B29E",
+                    lineHeight: 1.5,
+                    display: "block",
+                  }}
+                >
+                  {about.feature1Desc}
+                </span>
+              </div>
 
-                <div
+              <div
                 style={{
-                    background: "rgba(232, 209, 167, 0.1)",
-                    border: "1px solid #E8D1A7",
-                    borderRadius: "16px",
-                    padding: "18px",
+                  backgroundColor: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(232, 209, 167, 0.25)",
+                  borderRadius: "14px",
+                  padding: "14px 16px",
                 }}
+              >
+                <strong
+                  style={{
+                    fontSize: "13.5px",
+                    color: "#FAF6EE",
+                    display: "block",
+                    marginBottom: "4px",
+                  }}
                 >
-                <h4 style={{ margin: "0 0 4px", fontSize: "14px", fontWeight: "800", color: "#E8D1A7" }}>
-                    Jeruk Kuit Segar
-                </h4>
-                <p style={{ margin: 0, fontSize: "12px", color: "#FAF6EE", lineHeight: "1.5" }}>
-                    Aroma sitrus khas Banjar yang autentik dan menyegarkan.
-                </p>
-                </div>
+                  {about.feature2Title}
+                </strong>
+                <span
+                  style={{
+                    fontSize: "11.5px",
+                    color: "#C4B29E",
+                    lineHeight: 1.5,
+                    display: "block",
+                  }}
+                >
+                  {about.feature2Desc}
+                </span>
+              </div>
             </div>
-            </div>
+          </div>
         </div>
-        </section>
-    );
-    }
+      </div>
+    </section>
+  );
+}

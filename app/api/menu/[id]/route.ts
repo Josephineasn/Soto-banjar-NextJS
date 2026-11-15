@@ -1,94 +1,153 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import fs from "fs";
+import path from "path";
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+const META_FILE = path.join(process.cwd(), "menu-meta.json");
+
+interface MenuMetaStore {
+  categories: string[];
+  items: Record<string, Record<string, unknown>>;
+}
+
+function readMeta(): MenuMetaStore {
   try {
-    const { id } = await params;
-    const menuId = parseInt(id, 10);
-
-    if (isNaN(menuId)) {
-      return NextResponse.json({ error: "ID menu tidak valid." }, { status: 400 });
+    if (fs.existsSync(META_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(META_FILE, "utf-8")) as Partial<MenuMetaStore>;
+      return {
+        categories: Array.isArray(parsed.categories)
+          ? parsed.categories
+          : ["makanan", "cemilan", "pendamping", "minuman"],
+        items: parsed.items && typeof parsed.items === "object" ? parsed.items : {},
+      };
     }
+  } catch {
+    // Abaikan
+  }
+  return {
+    categories: ["makanan", "cemilan", "pendamping", "minuman"],
+    items: {},
+  };
+}
 
-    const menu = await prisma.menu.findUnique({
-      where: { id: menuId },
-      include: { reviews: true },
-    });
-
-    if (!menu) {
-      return NextResponse.json({ error: "Menu tidak ditemukan." }, { status: 404 });
-    }
-
-    return NextResponse.json(menu);
-  } catch (error) {
-    console.error("Gagal mengambil detail menu:", error);
-    return NextResponse.json({ error: "Terjadi kesalahan server." }, { status: 500 });
+function writeMeta(data: MenuMetaStore) {
+  try {
+    fs.writeFileSync(META_FILE, JSON.stringify(data, null, 2), "utf-8");
+  } catch (err) {
+    console.error("Gagal menulis menu-meta.json:", err);
   }
 }
 
 export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  request: Request,
+  context: { params: { id: string } | Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
-    const menuId = parseInt(id, 10);
+    const resolvedParams = await Promise.resolve(context.params);
+    const rawId = String(resolvedParams.id);
+    const body = (await request.json()) as Record<string, unknown>;
 
-    if (isNaN(menuId)) {
-      return NextResponse.json({ error: "ID menu tidak valid." }, { status: 400 });
+    const meta = readMeta();
+    const existingMeta = meta.items[rawId] || {};
+
+    const isRec =
+      body.isRecommended !== undefined
+        ? Boolean(body.isRecommended)
+        : body.isFavorite !== undefined
+        ? Boolean(body.isFavorite)
+        : body.recommended !== undefined
+        ? Boolean(body.recommended)
+        : existingMeta.isRecommended !== undefined
+        ? Boolean(existingMeta.isRecommended)
+        : false;
+
+    const updatedMeta: Record<string, unknown> = {
+      ...existingMeta,
+      ...(body.category !== undefined ? { category: String(body.category).toLowerCase() } : {}),
+      ...(body.rating !== undefined ? { rating: Number(body.rating) } : {}),
+      ...(body.spiceLevel !== undefined ? { spiceLevel: String(body.spiceLevel) } : {}),
+      ...(body.calories !== undefined ? { calories: Number(body.calories) } : {}),
+      ...(body.ingredients !== undefined ? { ingredients: String(body.ingredients) } : {}),
+      ...(body.packaging !== undefined ? { packaging: String(body.packaging) } : {}),
+      isRecommended: isRec,
+      isFavorite: isRec,
+      recommended: isRec,
+      bestSeller: isRec,
+      isBestSeller: isRec,
+    };
+
+    meta.items[rawId] = updatedMeta;
+    if (body.category && !meta.categories.includes(String(body.category).toLowerCase())) {
+      meta.categories.push(String(body.category).toLowerCase());
+    }
+    writeMeta(meta);
+
+    // Update field dasar di Prisma jika ada perubahan nama/harga/kategori/deskripsi/gambar
+    let dbUpdated: Record<string, unknown> = {};
+    try {
+      const parsedId = isNaN(Number(rawId)) ? rawId : Number(rawId);
+      const whereClause = { id: parsedId } as unknown as Parameters<
+        typeof prisma.menu.update
+      >[0]["where"];
+
+      const prismaData: Record<string, unknown> = {};
+      if (body.name !== undefined) prismaData.name = String(body.name);
+      if (body.category !== undefined) prismaData.category = String(body.category).toLowerCase();
+      if (body.price !== undefined) prismaData.price = Number(body.price);
+      if (body.image !== undefined) prismaData.image = String(body.image);
+      if (body.description !== undefined) prismaData.description = String(body.description);
+
+      if (Object.keys(prismaData).length > 0) {
+        const res = await prisma.menu.update({
+          where: whereClause,
+          data: prismaData as unknown as Parameters<typeof prisma.menu.update>[0]["data"],
+        });
+        dbUpdated = res as unknown as Record<string, unknown>;
+      }
+    } catch {
+      // Abaikan jika kolom tertentu tidak ada di Prisma
     }
 
-    const body = await req.json();
-
-    const updatedMenu = await prisma.menu.update({
-      where: { id: menuId },
-      data: {
-        ...(body.name && { name: String(body.name).trim() }),
-        ...(body.category && { category: body.category }),
-        ...(body.price !== undefined && { price: Number(body.price) }),
-        ...(body.description && { description: String(body.description).trim() }),
-        ...(body.image && { image: String(body.image).trim() }),
-        ...(body.calories && { calories: body.calories }),
-        ...(body.spicyLevel && { spicyLevel: body.spicyLevel }),
-        ...(body.popular !== undefined && { popular: Boolean(body.popular) }),
-        ...(body.available !== undefined && { available: Boolean(body.available) }),
-        ...(body.packagingInfo && { packagingInfo: body.packagingInfo }),
-        ...(body.rating !== undefined && { rating: Number(body.rating) }),
+    return NextResponse.json(
+      {
+        id: isNaN(Number(rawId)) ? rawId : Number(rawId),
+        ...dbUpdated,
+        ...body,
+        ...updatedMeta,
       },
-    });
-
-    return NextResponse.json(updatedMenu);
-  } catch (error) {
-    console.error("Gagal update menu:", error);
-    return NextResponse.json({ error: "Gagal memperbarui menu." }, { status: 500 });
+      { status: 200 }
+    );
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
 
 export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  request: Request,
+  context: { params: { id: string } | Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
-    const menuId = parseInt(id, 10);
+    const resolvedParams = await Promise.resolve(context.params);
+    const rawId = String(resolvedParams.id);
 
-    if (isNaN(menuId)) {
-      return NextResponse.json({ error: "ID menu tidak valid." }, { status: 400 });
+    const meta = readMeta();
+    delete meta.items[rawId];
+    writeMeta(meta);
+
+    try {
+      const parsedId = isNaN(Number(rawId)) ? rawId : Number(rawId);
+      const whereClause = { id: parsedId } as unknown as Parameters<
+        typeof prisma.menu.delete
+      >[0]["where"];
+      await prisma.menu.delete({ where: whereClause });
+    } catch {
+      // Abaikan
     }
 
-    await prisma.menu.delete({
-      where: { id: menuId },
-    });
-
-    return NextResponse.json({ message: "Menu berhasil dihapus dari katalog." });
-  } catch (error) {
-    console.error("Gagal menghapus menu:", error);
-    return NextResponse.json(
-      { error: "Menu tidak ditemukan atau gagal dihapus." },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: true }, { status: 200 });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

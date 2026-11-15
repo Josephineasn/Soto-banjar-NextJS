@@ -1,620 +1,871 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 interface ReviewItem {
-    id: string;
-    name: string;
-    city: string;
-    rating: number;
-    comment: string;
-    reply?: string | null;
-    timeAgo?: string;
- }
+  id: number | string;
+  name: string;
+  customerName?: string;
+  city?: string;
+  area?: string;
+  rating: number;
+  comment: string;
+  reply?: string | null;
+  adminReply?: string | null;
+  showOnWebsite?: boolean;
+  createdAt?: string;
+}
 
-    interface ReviewSectionProps {
-    currentUser?: { name: string; role: string } | null;
-    onRequireAuth?: () => void;
+interface ReviewSectionProps {
+  currentUser?: { name: string; role: string } | null;
+  onRequireAuth?: () => void;
+}
+
+export default function ReviewSection({
+  currentUser,
+  onRequireAuth,
+}: ReviewSectionProps) {
+  const [reviews, setReviews] = useState<ReviewItem[]>([]);
+  const [starFilter, setStarFilter] = useState<number | "ALL">("ALL");
+  const [activeIndex, setActiveIndex] = useState<number>(0);
+
+  // State Modal Tulis Ulasan
+  const [modalOpen, setModalOpen] = useState<boolean>(false);
+  const [cityInput, setCityInput] = useState<string>("Jakarta Selatan");
+  const [ratingInput, setRatingInput] = useState<number>(5);
+  const [commentInput, setCommentInput] = useState<string>("");
+  const [submitting, setSubmitting] = useState<boolean>(false);
+
+  // State Notifikasi Berhasil Kirim (Menunggu Acc Admin)
+  const [submitNotice, setSubmitNotice] = useState<boolean>(false);
+
+  function formatDisplayDate(dateStr?: string): string {
+    if (!dateStr) return "Hari ini";
+    const parsed = new Date(dateStr);
+    if (isNaN(parsed.getTime())) {
+      return dateStr; // Biarkan teks seperti "Hari ini", "2 hari lalu", dll.
     }
+    return parsed.toLocaleDateString("id-ID", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  }
 
-    const defaultSampleReviews: ReviewItem[] = [
-    {
-        id: "sample-1",
-        name: "Marcello Kwandinata",
-        city: "Jakarta Utara",
-        rating: 5,
-        timeAgo: "Hari ini",
-        comment:
-        "Makanan nya enak sekali dan minuman nya juga segar harganya sangat worth it",
-    },
-    {
-        id: "sample-2",
-        name: "Marcello Kwandinata",
-        city: "Jakarta barat",
-        rating: 5,
-        timeAgo: "Hari ini",
-        comment:
-        "Soto nya enak sekali dan dagingnya empuk beserta hidangan penutupnya itu sangat worth it dengan harga segitu",
-    },
-    {
-        id: "sample-3",
-        name: "Josephine Sherly",
-        city: "Jakarta Selatan",
-        rating: 5,
-        timeAgo: "2 hari lalu",
-        comment:
-        "Kuah kaldunya beneran wangi kayu manis dan kapulaga asli Banjar. Pas sampai di rumah masih panas banget dan kuahnya dipisah rapi, ga tumpah sama sekali!",
-        reply:
-        "Terima kasih banyak Kak! Kami selalu memisahkan kuah panas dalam wadah kedap agar rasa rempahnya tetap maksimal.",
-    },
-    {
-        id: "sample-4",
-        name: "Calvin Marcello",
-        city: "Tangerang Kota",
-        rating: 5,
-        timeAgo: "Seminggu lalu",
-        comment:
-        "Porsi ayamnya melimpah, telur bebek rebusnya gurih berpadu pas dengan perkedel kentang. Pengiriman ke Tangerang cepet banget cuma 35 menitan.",
-    },
-    {
-        id: "sample-5",
-        name: "Gading Sihol",
-        city: "Jakarta Utara",
-        rating: 5,
-        timeAgo: "2 minggu lalu",
-        comment:
-        "Rasa autentik nostalgia waktu tugas di Kalsel. Kemasan food grade-nya higienis dan jeruk kuitnya segar banget buat es jeruknya!",
-        reply:
-        "Wah senang bisa mengobati rindu cita rasa Kalimantan Selatan, Dok! Ditunggu pesanan berikutnya.",
-    },
-    ];
-
-    export default function ReviewSection({
-    currentUser,
-    onRequireAuth,
-    }: ReviewSectionProps) {
-    const [reviews, setReviews] = useState<ReviewItem[]>(defaultSampleReviews);
-    const [loading, setLoading] = useState(true);
-
-    const [modalOpen, setModalOpen] = useState(false);
-    const [authWarningOpen, setAuthWarningOpen] = useState(false);
-
-    // Form State
-    const [city, setCity] = useState("Jakarta Selatan");
-    const [rating, setRating] = useState(5);
-    const [comment, setComment] = useState("");
-    const [submitting, setSubmitting] = useState(false);
+  useEffect(() => {
+    let isMounted = true;
 
     async function loadReviews() {
-        try {
-        setLoading(true);
-        const res = await fetch("/api/reviews", { cache: "no-store" });
-        if (res.ok) {
-            const dbReviews: ReviewItem[] = await res.json();
-            if (Array.isArray(dbReviews) && dbReviews.length > 0) {
-            setReviews([...dbReviews, ...defaultSampleReviews]);
-            } else {
-            setReviews(defaultSampleReviews);
-            }
-        } else {
-            setReviews(defaultSampleReviews);
-        }
-        } catch {
-        setReviews(defaultSampleReviews);
-        } finally {
-        setLoading(false);
-        }
-    }
-
-    useEffect(() => {
-        queueMicrotask(() => {
-        void loadReviews();
+      try {
+        // Hanya mengambil ulasan yang sudah disetujui admin (?public=true)
+        const res = await fetch("/api/reviews?public=true", {
+          cache: "no-store",
         });
-    }, []);
+        if (!res.ok) return;
+        const raw: unknown = await res.json();
+        if (Array.isArray(raw) && isMounted) {
+          const approvedList: ReviewItem[] = (raw as ReviewItem[])
+            .filter((r) => r.showOnWebsite !== false)
+            .map((r, idx) => ({
+              id: r.id ?? idx + 1,
+              name: r.name || r.customerName || "Pelanggan Setia",
+              city: r.city || r.area || "Jakarta Selatan",
+              rating: Number(r.rating ?? 5),
+              comment: r.comment || "",
+              reply: r.reply || r.adminReply || null,
+              createdAt: formatDisplayDate(r.createdAt),
+            }));
 
-    function handleOpenReviewModal() {
-        if (!currentUser) {
-        setAuthWarningOpen(true);
-        return;
+          setReviews(approvedList);
         }
-        setModalOpen(true);
+      } catch {
+        // Abaikan jika gagal memuat
+      }
     }
 
-    async function handleSubmitReview(e: React.FormEvent) {
-        e.preventDefault();
-        if (!currentUser || !comment.trim()) return;
+    void loadReviews();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
-        try {
-        setSubmitting(true);
-        const res = await fetch("/api/reviews", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-            name: currentUser.name,
-            city: city.trim() || "Jakarta",
-            rating: Number(rating),
-            comment: comment.trim(),
-            }),
-        });
+  const filteredReviews = useMemo(() => {
+    if (starFilter === "ALL") return reviews;
+    return reviews.filter((r) => Math.round(r.rating) === starFilter);
+  }, [reviews, starFilter]);
 
-        if (res.ok) {
-            setComment("");
-            setModalOpen(false);
-            await loadReviews();
-        } else {
-            alert("Gagal mengirim ulasan.");
-        }
-        } catch {
-        alert("Terjadi kendala jaringan saat mengirim ulasan.");
-        } finally {
-        setSubmitting(false);
-        }
+  const total = filteredReviews.length;
+  const safeIndex = total > 0 ? ((activeIndex % total) + total) % total : 0;
+
+  function handleSelectStar(star: number | "ALL") {
+    setStarFilter(star);
+    setActiveIndex(0);
+  }
+
+  function handlePrev() {
+    if (total === 0) return;
+    setActiveIndex((prev) => (prev - 1 + total) % total);
+  }
+
+  function handleNext() {
+    if (total === 0) return;
+    setActiveIndex((prev) => (prev + 1) % total);
+  }
+
+  function getRelativePosition(
+    index: number
+  ): "center" | "left" | "right" | "hidden" {
+    if (total === 0) return "hidden";
+    if (index === safeIndex) return "center";
+    if (total === 1) return "hidden";
+
+    const leftIdx = (safeIndex - 1 + total) % total;
+    const rightIdx = (safeIndex + 1) % total;
+
+    if (index === leftIdx) return "left";
+    if (index === rightIdx && total >= 3) return "right";
+    return "hidden";
+  }
+
+  async function handleSubmitReview(e: React.FormEvent) {
+    e.preventDefault();
+    if (!currentUser) {
+      onRequireAuth?.();
+      return;
     }
+    if (!commentInput.trim()) return;
 
-    return (
-        <section
-        id="ulasan"
+    setSubmitting(true);
+    try {
+      const payload = {
+        name: currentUser.name,
+        customerName: currentUser.name,
+        city: cityInput,
+        rating: ratingInput,
+        comment: commentInput.trim(),
+      };
+
+      const res = await fetch("/api/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        // TIDAK langsung dimasukkan ke state `reviews` di layar customer,
+        // karena harus di-acc oleh Admin terlebih dahulu.
+        setCommentInput("");
+        setRatingInput(5);
+        setModalOpen(false);
+        setSubmitNotice(true);
+      }
+    } catch {
+      // Abaikan
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <section
+      id="ulasan"
+      style={{
+        maxWidth: "1240px",
+        margin: "0 auto",
+        padding: "56px 24px",
+      }}
+    >
+      {/* Header Ulasan */}
+      <div
         style={{
-            backgroundColor: "#FAF6EE",
-            padding: "80px 24px 90px",
-            fontFamily: "system-ui, -apple-system, sans-serif",
+          display: "flex",
+          flexWrap: "wrap",
+          justifyContent: "space-between",
+          alignItems: "flex-end",
+          gap: "20px",
+          marginBottom: "24px",
         }}
-        >
-        <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-            {/* Header */}
-            <div
+      >
+        <div>
+          <span
             style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-end",
-                marginBottom: "36px",
-                flexWrap: "wrap",
-                gap: "20px",
+              display: "inline-block",
+              backgroundColor: "#EFE6D5",
+              color: "#734F31",
+              padding: "5px 14px",
+              borderRadius: "20px",
+              fontSize: "11px",
+              fontWeight: 900,
+              letterSpacing: "0.6px",
+              textTransform: "uppercase",
+              marginBottom: "10px",
             }}
-            >
-            <div>
-                <div
-                style={{
-                    display: "inline-block",
-                    backgroundColor: "#E8D1A7",
-                    color: "#734F31",
-                    fontSize: "11px",
-                    fontWeight: "800",
-                    letterSpacing: "0.8px",
-                    padding: "4px 14px",
-                    borderRadius: "20px",
-                    textTransform: "uppercase",
-                    marginBottom: "12px",
-                }}
-                >
-                KATA MEREKA
-                </div>
-                <h2
-                style={{
-                    margin: "0 0 8px",
-                    fontSize: "36px",
-                    fontWeight: "900",
-                    color: "#2E1C14",
-                    fontFamily: "serif",
-                }}
-                >
-                Ulasan Pelanggan
-                </h2>
-                <p style={{ margin: 0, fontSize: "14px", color: "#64748B" }}>
-                Apa kata penikmat setia Soto Banjar Selera Nusantara.
-                </p>
-            </div>
+          >
+            KATA MEREKA
+          </span>
+          <h2
+            style={{
+              margin: "0 0 6px",
+              fontSize: "34px",
+              fontWeight: 900,
+              color: "#3E2723",
+              fontFamily: "Georgia, serif",
+            }}
+          >
+            Ulasan Pelanggan
+          </h2>
+          <p style={{ margin: 0, fontSize: "14px", color: "#64748B" }}>
+            Apa kata penikmat setia Soto Banjar Selera Nusantara.
+          </p>
+        </div>
 
+        <button
+          type="button"
+          onClick={() => {
+            if (!currentUser) {
+              onRequireAuth?.();
+            } else {
+              setModalOpen(true);
+            }
+          }}
+          style={{
+            padding: "12px 22px",
+            borderRadius: "12px",
+            border: "none",
+            backgroundColor: "#A47E53",
+            color: "#FFFFFF",
+            fontSize: "13px",
+            fontWeight: 800,
+            cursor: "pointer",
+            boxShadow: "0 4px 14px rgba(164, 126, 83, 0.3)",
+          }}
+        >
+          ✎ Tulis Ulasan Anda
+        </button>
+      </div>
+
+      {/* Bar Filter Bintang */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: "8px",
+          marginBottom: "24px",
+          paddingBottom: "16px",
+          borderBottom: "1.5px solid #E8D1A7",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => handleSelectStar("ALL")}
+          style={{
+            padding: "8px 16px",
+            borderRadius: "30px",
+            border:
+              starFilter === "ALL"
+                ? "1.5px solid #734F31"
+                : "1px solid #D6C7B2",
+            backgroundColor: starFilter === "ALL" ? "#734F31" : "#FFFFFF",
+            color: starFilter === "ALL" ? "#FFFFFF" : "#432818",
+            fontSize: "12px",
+            fontWeight: 800,
+            cursor: "pointer",
+          }}
+        >
+          Semua ({reviews.length})
+        </button>
+
+        {[5, 4, 3, 2, 1].map((star) => {
+          const count = reviews.filter(
+            (r) => Math.round(r.rating) === star
+          ).length;
+          const active = starFilter === star;
+          return (
             <button
-                type="button"
-                onClick={handleOpenReviewModal}
-                style={{
+              key={star}
+              type="button"
+              onClick={() => handleSelectStar(star)}
+              style={{
+                padding: "8px 15px",
+                borderRadius: "30px",
+                border: active ? "1.5px solid #D97706" : "1px solid #D6C7B2",
+                backgroundColor: active ? "#FEF3C7" : "#FFFFFF",
+                color: active ? "#92400E" : "#432818",
+                fontSize: "12px",
+                fontWeight: 800,
+                cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
-                gap: "8px",
-                backgroundColor: "#C28955",
-                color: "#FFFFFF",
-                border: "none",
-                borderRadius: "10px",
-                padding: "12px 24px",
-                fontSize: "13px",
-                fontWeight: "800",
-                cursor: "pointer",
-                boxShadow: "0 4px 14px rgba(194, 137, 85, 0.35)",
-                }}
+                gap: "5px",
+              }}
             >
-                <svg
-                width="14"
-                height="14"
+              <span style={{ color: "#F59E0B" }}>★</span>
+              <span>{star}</span>
+              <span style={{ fontSize: "11px", opacity: 0.75 }}>({count})</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* STAGE CAROUSEL */}
+      {filteredReviews.length === 0 ? (
+        <div
+          style={{
+            padding: "48px 20px",
+            textAlign: "center",
+            backgroundColor: "#FFFFFF",
+            borderRadius: "20px",
+            border: "1px dashed #D6C7B2",
+            color: "#734F31",
+            fontWeight: 700,
+          }}
+        >
+          {starFilter === "ALL"
+            ? "Belum ada ulasan yang ditampilkan."
+            : `Belum ada ulasan untuk filter bintang ${starFilter}.`}
+        </div>
+      ) : (
+        <div
+          style={{
+            position: "relative",
+            height: "390px",
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+            padding: "10px 0",
+          }}
+        >
+          {/* TOMBOL GESER KIRI */}
+          {total > 1 && (
+            <button
+              type="button"
+              onClick={handlePrev}
+              aria-label="Ulasan Sebelumnya"
+              style={{
+                position: "absolute",
+                left: "12px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                zIndex: 45,
+                width: "48px",
+                height: "48px",
+                borderRadius: "50%",
+                border: "2px solid #E8D1A7",
+                backgroundColor: "#734F31",
+                color: "#FAF6EE",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                boxShadow: "0 8px 22px rgba(67, 40, 24, 0.28)",
+                transition: "all 0.2s ease",
+              }}
+            >
+              <svg
+                width="22"
+                height="22"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth={2.5}
+                strokeWidth="2.8"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                >
-                <path d="M12 20h9" />
-                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-                </svg>
-                <span>Tulis Ulasan Anda</span>
+              >
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
             </button>
-            </div>
+          )}
 
-            {/* Grid Kartu Ulasan */}
-            {loading ? (
-            <div style={{ textAlign: "center", padding: "40px", color: "#9D9167" }}>
-                Memuat ulasan pelanggan...
-            </div>
-            ) : (
-            <div
-                style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-                gap: "22px",
+          {/* KOTAK-KOTAK ULASAN */}
+          {filteredReviews.map((rev, idx) => {
+            const pos = getRelativePosition(idx);
+            if (pos === "hidden") return null;
+
+            const isCenter = pos === "center";
+            const isLeft = pos === "left";
+
+            const translateX = isCenter ? "0%" : isLeft ? "-84%" : "84%";
+            const scale = isCenter ? 1.05 : 0.82;
+            const opacity = isCenter ? 1 : 0.58;
+            const zIndex = isCenter ? 30 : 15;
+
+            return (
+              <div
+                key={`${rev.id}-${idx}`}
+                onClick={() => {
+                  if (pos === "left") handlePrev();
+                  if (pos === "right") handleNext();
                 }}
-            >
-                {reviews.map((item) => {
-                const initialLetter = item.name ? item.name.charAt(0).toUpperCase() : "U";
-
-                return (
+                style={{
+                  position: "absolute",
+                  width: "100%",
+                  maxWidth: "420px",
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: "24px",
+                  padding: "26px",
+                  border: isCenter
+                    ? "2px solid #9D9167"
+                    : "1px solid #EAE3D5",
+                  boxShadow: isCenter
+                    ? "0 22px 45px rgba(67, 40, 24, 0.16)"
+                    : "0 8px 20px rgba(0, 0, 0, 0.05)",
+                  transform: `translateX(${translateX}) scale(${scale})`,
+                  opacity,
+                  zIndex,
+                  cursor: isCenter ? "default" : "pointer",
+                  transition:
+                    "transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.5s ease, box-shadow 0.5s ease, border-color 0.5s ease",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  minHeight: "290px",
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "14px",
+                    }}
+                  >
                     <div
-                    key={item.id}
-                    style={{
-                        backgroundColor: "#FFFFFF",
-                        borderRadius: "16px",
-                        border: "1px solid #E2E8F0",
-                        padding: "24px",
-                        boxShadow: "0 4px 16px rgba(0, 0, 0, 0.03)",
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "space-between",
-                    }}
+                      style={{
+                        color: "#F59E0B",
+                        fontSize: "16px",
+                        letterSpacing: "2px",
+                      }}
                     >
-                    <div>
-                        <div
-                        style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            marginBottom: "14px",
-                        }}
-                        >
-                        <div style={{ color: "#F59E0B", fontSize: "16px", letterSpacing: "2px" }}>
-                            {"★".repeat(item.rating || 5)}
-                        </div>
-                        <span style={{ fontSize: "11px", color: "#94A3B8", fontWeight: "600" }}>
-                            {item.timeAgo || "Hari ini"}
-                        </span>
-                        </div>
-
-                        <p style={{ fontSize: "13px", lineHeight: "1.7", color: "#475569", margin: "0 0 18px" }}>
-                        &ldquo;{item.comment}&rdquo;
-                        </p>
+                      {"★".repeat(Math.max(1, Math.min(5, rev.rating)))}
+                      <span style={{ color: "#E2E8F0" }}>
+                        {"★".repeat(5 - Math.max(1, Math.min(5, rev.rating)))}
+                      </span>
                     </div>
-
-                    <div>
-                        <div
-                        style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "12px",
-                            borderTop: "1px solid #F1F5F9",
-                            paddingTop: "14px",
-                        }}
-                        >
-                        <div
-                            style={{
-                            width: "36px",
-                            height: "36px",
-                            borderRadius: "50%",
-                            backgroundColor: "#16231C",
-                            color: "#FAF6EE",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: "13px",
-                            fontWeight: "800",
-                            flexShrink: 0,
-                            }}
-                        >
-                            {initialLetter}
-                        </div>
-                        <div>
-                            <strong style={{ fontSize: "13px", color: "#1E293B", display: "block" }}>
-                            {item.name}
-                            </strong>
-                            <span style={{ fontSize: "11px", color: "#94A3B8", display: "flex", alignItems: "center", gap: "3px", marginTop: "3px" }}>
-                            <span style={{ color: "#EF4444", fontSize: "10px" }}>📍</span>
-                            {item.city}
-                            </span>
-                        </div>
-                        </div>
-
-                        {item.reply && (
-                        <div
-                            style={{
-                            marginTop: "14px",
-                            backgroundColor: "#F8FAFC",
-                            borderLeft: "3px solid #166534",
-                            borderRadius: "0 8px 8px 0",
-                            padding: "10px 14px",
-                            }}
-                        >
-                            <strong style={{ fontSize: "11px", color: "#166534", display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
-                                <polyline points="9 10 4 15 9 20" />
-                                <path d="M20 4v7a4 4 0 0 1-4 4H4" />
-                            </svg>
-                            Respon Pemilik Restoran:
-                            </strong>
-                            <p style={{ margin: 0, fontSize: "11px", lineHeight: "1.5", color: "#475569" }}>
-                            {item.reply}
-                            </p>
-                        </div>
-                        )}
-                    </div>
-                    </div>
-                );
-                })}
-            </div>
-            )}
-        </div>
-
-        {/* Wajib Login */}
-        {authWarningOpen && (
-            <div
-            style={{
-                position: "fixed",
-                inset: 0,
-                backgroundColor: "rgba(0, 0, 0, 0.65)",
-                zIndex: 140,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "20px",
-            }}
-            onClick={() => setAuthWarningOpen(false)}
-            >
-            <div
-                style={{
-                width: "100%",
-                maxWidth: "400px",
-                backgroundColor: "#FFFFFF",
-                borderRadius: "18px",
-                padding: "28px",
-                textAlign: "center",
-                border: "1.5px solid #E8D1A7",
-                boxShadow: "0 20px 50px rgba(0, 0, 0, 0.2)",
-                }}
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div
-                style={{
-                    width: "50px",
-                    height: "50px",
-                    borderRadius: "50%",
-                    backgroundColor: "#FEF3C7",
-                    color: "#B45309",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    margin: "0 auto 16px",
-                }}
-                >
-                <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                </svg>
-                </div>
-
-                <h3 style={{ margin: "0 0 8px", fontSize: "18px", fontWeight: "900", color: "#1E293B" }}>
-                Silakan Masuk / Buat Akun
-                </h3>
-                <p style={{ margin: "0 0 22px", fontSize: "13px", color: "#64748B", lineHeight: "1.6" }}>
-                Hanya pelanggan yang telah masuk akun yang dapat <strong>memesan sajian</strong> dan <strong>memberikan ulasan</strong> cita rasa restoran.
-                </p>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                <button
-                    type="button"
-                    onClick={() => {
-                    setAuthWarningOpen(false);
-                    if (onRequireAuth) onRequireAuth();
-                    }}
-                    style={{
-                    width: "100%",
-                    padding: "11px",
-                    backgroundColor: "#734F31",
-                    color: "#FFFFFF",
-                    border: "none",
-                    borderRadius: "10px",
-                    fontSize: "13px",
-                    fontWeight: "800",
-                    cursor: "pointer",
-                    }}
-                >
-                    Masuk / Buat Akun Sekarang
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setAuthWarningOpen(false)}
-                    style={{
-                    width: "100%",
-                    padding: "10px",
-                    backgroundColor: "#F1F5F9",
-                    color: "#64748B",
-                    border: "none",
-                    borderRadius: "10px",
-                    fontSize: "12px",
-                    fontWeight: "700",
-                    cursor: "pointer",
-                    }}
-                >
-                    Nanti Saja
-                </button>
-                </div>
-            </div>
-            </div>
-        )}
-
-        {/* Modal Form Ulasan */}
-        {modalOpen && currentUser && (
-            <div
-            style={{
-                position: "fixed",
-                inset: 0,
-                backgroundColor: "rgba(0, 0, 0, 0.65)",
-                zIndex: 140,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "20px",
-            }}
-            onClick={() => setModalOpen(false)}
-            >
-            <div
-                style={{
-                width: "100%",
-                maxWidth: "460px",
-                backgroundColor: "#FFFFFF",
-                borderRadius: "20px",
-                padding: "28px",
-                border: "1.5px solid #E8D1A7",
-                boxShadow: "0 20px 50px rgba(0, 0, 0, 0.2)",
-                }}
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div
-                style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: "18px",
-                }}
-                >
-                <div>
-                    <h4 style={{ margin: 0, fontSize: "19px", fontWeight: "900", color: "#2E1C14" }}>
-                    Tulis Ulasan Anda
-                    </h4>
-                    <span style={{ fontSize: "12px", color: "#9D9167" }}>
-                    Akun: <strong>{currentUser.name}</strong>
+                    <span
+                      style={{
+                        fontSize: "12px",
+                        color: "#94A3B8",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {rev.createdAt || "Hari ini"}
                     </span>
-                </div>
-                <button
-                    type="button"
-                    onClick={() => setModalOpen(false)}
-                    style={{
-                    background: "none",
-                    border: "none",
-                    fontSize: "18px",
-                    color: "#64748B",
-                    cursor: "pointer",
-                    fontWeight: "bold",
-                    }}
-                >
-                    ✕
-                </button>
-                </div>
+                  </div>
 
-                <form onSubmit={handleSubmitReview} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#734F31", marginBottom: "4px" }}>
-                    Kota / Wilayah Pengiriman
-                    </label>
-                    <input
-                    type="text"
-                    required
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    placeholder="Contoh: Jakarta Selatan, Tangerang, Bekasi"
+                  <p
                     style={{
-                        width: "100%",
-                        padding: "10px 12px",
-                        borderRadius: "8px",
-                        border: "1px solid #E8D1A7",
-                        backgroundColor: "#FAF6EE",
-                        fontSize: "13px",
-                        color: "#2E1C14",
-                        outline: "none",
-                        boxSizing: "border-box",
+                      margin: "0 0 18px",
+                      fontSize: isCenter ? "14.5px" : "13.5px",
+                      lineHeight: 1.65,
+                      color: "#1E293B",
+                      fontWeight: isCenter ? 500 : 400,
                     }}
-                    />
+                  >
+                    &ldquo;{rev.comment}&rdquo;
+                  </p>
                 </div>
 
                 <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#734F31", marginBottom: "4px" }}>
-                    Penilaian (Rating Bintang)
-                    </label>
-                    <select
-                    value={rating}
-                    onChange={(e) => setRating(Number(e.target.value))}
+                  <div
                     style={{
-                        width: "100%",
-                        padding: "10px 12px",
-                        borderRadius: "8px",
-                        border: "1px solid #E8D1A7",
-                        backgroundColor: "#FAF6EE",
-                        fontSize: "13px",
-                        color: "#2E1C14",
-                        fontWeight: "700",
-                        outline: "none",
-                        boxSizing: "border-box",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                      borderTop: "1px solid #F1F5F9",
+                      paddingTop: "14px",
                     }}
+                  >
+                    <div
+                      style={{
+                        width: "38px",
+                        height: "38px",
+                        borderRadius: "50%",
+                        backgroundColor: "#162A22",
+                        color: "#FFFFFF",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: 800,
+                        fontSize: "14px",
+                      }}
                     >
-                    <option value={5}>★★★★★ (5 Bintang - Sangat Puas)</option>
-                    <option value={4}>★★★★☆ (4 Bintang - Puas)</option>
-                    <option value={3}>★★★☆☆ (3 Bintang - Cukup)</option>
-                    </select>
-                </div>
+                      {rev.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div
+                        style={{
+                          fontSize: "13.5px",
+                          fontWeight: 800,
+                          color: "#0F172A",
+                        }}
+                      >
+                        {rev.name}
+                      </div>
+                      <div style={{ fontSize: "11.5px", color: "#64748B" }}>
+                        📍 {rev.city || "Jakarta"}
+                      </div>
+                    </div>
+                  </div>
 
-                <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "#734F31", marginBottom: "4px" }}>
-                    Ulasan Rasa, Pengemasan &amp; Layanan
-                    </label>
-                    <textarea
-                    required
-                    rows={4}
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                    placeholder="Ceritakan rasa kuah kaldu rempah, suwiran ayam, dan kondisi pesanan saat tiba..."
-                    style={{
-                        width: "100%",
-                        padding: "10px 12px",
+                  {rev.reply && (
+                    <div
+                      style={{
+                        marginTop: "12px",
+                        backgroundColor: "#F8FAFC",
+                        borderLeft: "3.5px solid #198754",
                         borderRadius: "8px",
-                        border: "1px solid #E8D1A7",
-                        backgroundColor: "#FAF6EE",
-                        fontSize: "13px",
-                        color: "#2E1C14",
-                        outline: "none",
-                        resize: "none",
-                        boxSizing: "border-box",
-                    }}
-                    />
+                        padding: "10px 12px",
+                        fontSize: "12px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 800,
+                          color: "#15803D",
+                          marginBottom: "2px",
+                        }}
+                      >
+                        ↳ Respon Pemilik Restoran:
+                      </div>
+                      <div style={{ color: "#475569" }}>{rev.reply}</div>
+                    </div>
+                  )}
                 </div>
+              </div>
+            );
+          })}
 
-                <button
-                    type="submit"
-                    disabled={submitting}
+          {/* TOMBOL GESER KANAN */}
+          {total > 1 && (
+            <button
+              type="button"
+              onClick={handleNext}
+              aria-label="Ulasan Selanjutnya"
+              style={{
+                position: "absolute",
+                right: "12px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                zIndex: 45,
+                width: "48px",
+                height: "48px",
+                borderRadius: "50%",
+                border: "2px solid #E8D1A7",
+                backgroundColor: "#734F31",
+                color: "#FAF6EE",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                boxShadow: "0 8px 22px rgba(67, 40, 24, 0.28)",
+                transition: "all 0.2s ease",
+              }}
+            >
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Indikator Dot di Bawah */}
+      {total > 1 && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: "8px",
+            marginTop: "14px",
+          }}
+        >
+          {filteredReviews.map((rev, i) => (
+            <button
+              key={`${rev.id}-dot-${i}`}
+              type="button"
+              onClick={() => setActiveIndex(i)}
+              style={{
+                width: safeIndex === i ? "28px" : "9px",
+                height: "9px",
+                borderRadius: "10px",
+                border: "none",
+                backgroundColor: safeIndex === i ? "#734F31" : "#D6C7B2",
+                cursor: "pointer",
+                transition: "all 0.3s ease",
+              }}
+              title={`Ulasan ${rev.name}`}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Modal Form Tulis Ulasan */}
+      {modalOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0,0,0,0.6)",
+            zIndex: 150,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+          }}
+          onClick={() => setModalOpen(false)}
+        >
+          <form
+            onSubmit={handleSubmitReview}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: "420px",
+              backgroundColor: "#FFFFFF",
+              borderRadius: "22px",
+              padding: "26px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "14px",
+            }}
+          >
+            <h3
+              style={{
+                margin: 0,
+                fontSize: "19px",
+                fontWeight: 900,
+                color: "#432818",
+              }}
+            >
+              Bagikan Ulasan Anda
+            </h3>
+
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "12px",
+                  fontWeight: 800,
+                  marginBottom: "6px",
+                }}
+              >
+                Pilih Rating Bintang
+              </label>
+              <div style={{ display: "flex", gap: "8px" }}>
+                {[1, 2, 3, 4, 5].map((num) => (
+                  <button
+                    key={num}
+                    type="button"
+                    onClick={() => setRatingInput(num)}
                     style={{
-                    width: "100%",
-                    padding: "12px",
-                    backgroundColor: "#C28955",
-                    color: "#FFFFFF",
-                    border: "none",
-                    borderRadius: "10px",
-                    fontSize: "13px",
-                    fontWeight: "800",
-                    cursor: submitting ? "not-allowed" : "pointer",
-                    marginTop: "6px",
-                    boxShadow: "0 4px 12px rgba(194, 137, 85, 0.3)",
+                      flex: 1,
+                      padding: "8px",
+                      borderRadius: "10px",
+                      border:
+                        ratingInput >= num
+                          ? "1.5px solid #F59E0B"
+                          : "1px solid #CBD5E1",
+                      backgroundColor:
+                        ratingInput >= num ? "#FEF3C7" : "#FFFFFF",
+                      color: ratingInput >= num ? "#D97706" : "#64748B",
+                      fontWeight: 900,
+                      cursor: "pointer",
                     }}
-                >
-                    {submitting ? "Mengirim Ulasan..." : "Kirim Ulasan Sekarang"}
-                </button>
-                </form>
+                  >
+                    {num} ★
+                  </button>
+                ))}
+              </div>
             </div>
+
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "12px",
+                  fontWeight: 800,
+                  marginBottom: "6px",
+                }}
+              >
+                Kota / Wilayah Anda
+              </label>
+              <input
+                type="text"
+                value={cityInput}
+                onChange={(e) => setCityInput(e.target.value)}
+                required
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: "10px",
+                  border: "1px solid #CBD5E1",
+                  fontSize: "13px",
+                }}
+              />
             </div>
-        )}
-        </section>
-    );
+
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "12px",
+                  fontWeight: 800,
+                  marginBottom: "6px",
+                }}
+              >
+                Komentar Ulasan
+              </label>
+              <textarea
+                rows={3}
+                value={commentInput}
+                onChange={(e) => setCommentInput(e.target.value)}
+                placeholder="Ceritakan pengalaman rasa dan layanan pengiriman kami..."
+                required
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: "10px",
+                  border: "1px solid #CBD5E1",
+                  fontSize: "13px",
+                }}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", marginTop: "6px" }}>
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
+                style={{
+                  flex: 1,
+                  padding: "11px",
+                  borderRadius: "10px",
+                  border: "1px solid #CBD5E1",
+                  backgroundColor: "#FFFFFF",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={submitting}
+                style={{
+                  flex: 1,
+                  padding: "11px",
+                  borderRadius: "10px",
+                  border: "none",
+                  backgroundColor: "#734F31",
+                  color: "#FFFFFF",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                {submitting ? "Mengirim..." : "Kirim Ulasan"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Modal Pemberitahuan Menunggu Persetujuan Admin */}
+      {submitNotice && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0,0,0,0.55)",
+            zIndex: 160,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+          }}
+          onClick={() => setSubmitNotice(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: "380px",
+              backgroundColor: "#FFFFFF",
+              borderRadius: "20px",
+              padding: "24px",
+              textAlign: "center",
+              border: "1.5px solid #E5DEC9",
+              boxShadow: "0 15px 35px rgba(0,0,0,0.2)",
+            }}
+          >
+            <div
+              style={{
+                width: "48px",
+                height: "48px",
+                borderRadius: "50%",
+                backgroundColor: "#DCFCE7",
+                color: "#166534",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 12px",
+                fontSize: "22px",
+                fontWeight: 900,
+              }}
+            >
+              ✓
+            </div>
+            <h4
+              style={{
+                margin: "0 0 6px",
+                fontSize: "17px",
+                fontWeight: 900,
+                color: "#2A1A11",
+              }}
+            >
+              Ulasan Terkirim!
+            </h4>
+            <p
+              style={{
+                margin: "0 0 18px",
+                fontSize: "13px",
+                color: "#6D4C30",
+                lineHeight: 1.5,
+              }}
+            >
+              Terima kasih atas ulasan Anda. Ulasan telah dikirim ke Admin dan akan tampil di halaman utama setelah disetujui.
+            </p>
+            <button
+              type="button"
+              onClick={() => setSubmitNotice(false)}
+              style={{
+                width: "100%",
+                padding: "11px",
+                borderRadius: "10px",
+                border: "none",
+                backgroundColor: "#734F31",
+                color: "#FFFFFF",
+                fontSize: "13px",
+                fontWeight: 800,
+                cursor: "pointer",
+              }}
+            >
+              Mengerti
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
 }
