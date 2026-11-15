@@ -49,7 +49,6 @@ export function AuthModal({
 
   const [identifier, setIdentifier] = useState<string>("");
   const [name, setName] = useState<string>("");
-  
   const [password, setPassword] = useState<string>("");
   const [confirmPassword, setConfirmPassword] = useState<string>("");
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -58,6 +57,7 @@ export function AuthModal({
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
 
+  // Validasi aturan password secara real-time
   const hasMinLength = password.length >= 6;
   const hasNumber = /\d/.test(password);
   const isMatch = password.length > 0 && password === confirmPassword;
@@ -119,55 +119,27 @@ export function AuthModal({
         }),
       });
 
-      let finalUser: AuthUserPayload | null = null;
+      const data = (await response.json().catch(() => ({}))) as AuthApiResponse;
 
-      if (response.ok) {
-        const data = (await response.json()) as AuthApiResponse;
-        if (data.user) {
-          finalUser = {
-            id: data.user.id,
-            name: data.user.name || displayName,
-            email: data.user.email || normalizedEmail,
-            role: (
-              data.user.role ||
-              (displayName.toLowerCase().includes("admin")
-                ? "ADMIN"
-                : "CUSTOMER")
-            ).toUpperCase(),
-          };
-        }
-      } else {
-        const errData = (await response.json().catch(() => ({}))) as {
-          error?: string;
-        };
-
-        if (mode === "register") {
-          setErrorMsg(errData.error || "Gagal mendaftarkan akun.");
-          setSubmitting(false);
-          return;
-        }
-
-        if (password.length >= 4) {
-          finalUser = {
-            id: `USR-${Math.floor(1000 + Math.random() * 9000)}`,
-            name: displayName,
-            email: normalizedEmail,
-            role: displayName.toLowerCase().includes("admin")
-              ? "ADMIN"
-              : "CUSTOMER",
-          };
-        } else {
-          setErrorMsg(errData.error || "Username/Email atau password salah.");
-          setSubmitting(false);
-          return;
-        }
-      }
-
-      if (!finalUser) {
-        setErrorMsg("Gagal masuk, silakan periksa kembali data Anda.");
+      // JIKA GAGAL
+      if (!response.ok || !data.user) {
+        setErrorMsg(
+          data.error ||
+            (mode === "login"
+              ? "Akun belum terdaftar atau password salah. Silakan daftar terlebih dahulu."
+              : "Gagal mendaftarkan akun.")
+        );
         setSubmitting(false);
         return;
       }
+
+      // JIKA BERHASIL
+      const finalUser: AuthUserPayload = {
+        id: data.user.id,
+        name: data.user.name || displayName,
+        email: data.user.email || normalizedEmail,
+        role: String(data.user.role || "CUSTOMER").toUpperCase(),
+      };
 
       if (typeof window !== "undefined") {
         const serialized = JSON.stringify(finalUser);
@@ -198,8 +170,7 @@ export function AuthModal({
             : [];
           list.unshift(logEntry);
           window.localStorage.setItem("soto_login_logs", JSON.stringify(list));
-        } catch {
-        }
+        } catch {}
 
         void fetch("/api/login-history", {
           method: "POST",
