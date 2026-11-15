@@ -4,9 +4,12 @@ import React, { useState, useEffect, useRef } from "react";
 import type { CartItem } from "@/types";
 
 export interface SavedOrderRecord {
-  id?: number;
+  id?: number | string;
   orderNumber: string;
+  accountName?: string;
+  customerEmail?: string;
   customerName: string;
+  recipientName?: string;
   customerPhone: string;
   area: string;
   shippingService: string;
@@ -52,7 +55,7 @@ interface CartDrawerProps {
   onUpdateQty: (id: number, change: number) => void;
   onRemoveItem: (id: number) => void;
   onClearCart: () => void;
-  currentUser?: { name: string; role: string; phone?: string } | null;
+  currentUser?: { name: string; email?: string; role: string; phone?: string } | null;
   onOpenHistory?: () => void;
   onOpenAuth?: () => void;
 }
@@ -104,7 +107,7 @@ export default function CartDrawer({
   onOpenHistory,
   onOpenAuth,
 }: CartDrawerProps) {
-  const orderSeqRef = useRef<number>(420630);
+  const orderSeqRef = useRef<number>(420750);
 
   const [areas, setAreas] = useState<DeliveryAreaOption[]>(DEFAULT_AREAS);
 
@@ -114,8 +117,6 @@ export default function CartDrawer({
   const [selectedArea, setSelectedArea] = useState<string>("");
   const [shippingCost, setShippingCost] = useState<number>(0);
   const [shippingService, setShippingService] = useState<string>("");
-  
-  // Thermal Bag diubah menjadi boolean (checkbox)
   const [useThermalBag, setUseThermalBag] = useState<boolean>(false);
 
   const [address, setAddress] = useState<string>("");
@@ -236,9 +237,33 @@ export default function CartDrawer({
     const orderNumber = `SBN-${orderSeqRef.current}`;
     const nowIso = new Date().toISOString();
 
+    // Ambil juga email/nama akun yang sedang login dari prop maupun localStorage
+    let activeAccountName = currentUser?.name?.trim() || "";
+    let activeAccountEmail = currentUser?.email?.trim() || "";
+
+    if (typeof window !== "undefined" && (!activeAccountName || !activeAccountEmail)) {
+      const keys = ["soto_user", "currentUser", "user", "soto_banjar_user"];
+      for (const key of keys) {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw) as { name?: string; email?: string };
+            if (!activeAccountName && parsed.name) activeAccountName = parsed.name.trim();
+            if (!activeAccountEmail && parsed.email) activeAccountEmail = parsed.email.trim();
+          } catch {
+            // abaikan
+          }
+        }
+      }
+    }
+
     const newRecord: SavedOrderRecord = {
+      id: orderNumber,
       orderNumber,
-      customerName: recipientName.trim() || currentUser?.name || "Pelanggan",
+      accountName: activeAccountName || recipientName.trim(),
+      customerEmail: activeAccountEmail,
+      customerName: recipientName.trim() || activeAccountName || "Pelanggan",
+      recipientName: recipientName.trim() || activeAccountName || "Pelanggan",
       customerPhone: customerPhone.trim(),
       area: selectedArea,
       shippingService,
@@ -272,15 +297,27 @@ export default function CartDrawer({
       });
 
       if (res.ok) {
-        const dbData = (await res.json()) as { id?: number | string; status?: string };
+        const dbData = (await res.json()) as {
+          id?: number | string;
+          orderNumber?: string;
+          status?: string;
+        };
         if (dbData.id) {
-          newRecord.id = Number(dbData.id) || 420600;
-          newRecord.orderNumber = `SBN-${420600 + Number(dbData.id)}`;
+          const cleanId = String(dbData.id).replace(/^#/, "");
+          newRecord.id = cleanId;
+          newRecord.orderNumber = cleanId.startsWith("SBN-")
+            ? cleanId
+            : `SBN-${cleanId}`;
         }
-        if (dbData.status) newRecord.status = dbData.status;
+        if (dbData.status) {
+          newRecord.status = dbData.status;
+        }
+      } else {
+        const errJson = (await res.json().catch(() => ({}))) as { error?: string };
+        console.error("Gagal simpan ke API /api/orders:", errJson);
       }
-    } catch {
-      // Lanjut simpan lokal
+    } catch (err) {
+      console.error("Network error saat simpan pesanan:", err);
     }
 
     try {
@@ -289,8 +326,18 @@ export default function CartDrawer({
         ? (JSON.parse(rawHistory) as SavedOrderRecord[])
         : [];
       existingHistory.unshift(newRecord);
-      localStorage.setItem("soto_complete_orders", JSON.stringify(existingHistory));
-    } catch {}
+      localStorage.setItem(
+        "soto_complete_orders",
+        JSON.stringify(existingHistory)
+      );
+    } catch {
+      // abaikan
+    }
+
+    // Beritahu OrderHistoryModal & Admin bahwa ada pesanan baru
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("ordersUpdated"));
+    }
 
     setIsSubmitting(false);
     setShowConfirmModal(false);
@@ -315,7 +362,7 @@ export default function CartDrawer({
   }
 
   function handleCopyVA(va: string) {
-    navigator.clipboard.writeText(va);
+    void navigator.clipboard.writeText(va);
     setCopiedVA(true);
     setTimeout(() => setCopiedVA(false), 2000);
   }
@@ -578,7 +625,7 @@ export default function CartDrawer({
                 </select>
               </div>
 
-              {/* ADD-ON THERMAL BAG (DIUBAH JADI KOTAK CENTANG / CHECKBOX) */}
+              {/* ADD-ON THERMAL BAG */}
               <div
                 style={{
                   backgroundColor: "#FFFFFF",
@@ -901,7 +948,7 @@ export default function CartDrawer({
               <button
                 type="button"
                 disabled={isSubmitting}
-                onClick={handleConfirmOrder}
+                onClick={() => void handleConfirmOrder()}
                 style={{
                   flex: 1,
                   padding: "12px",

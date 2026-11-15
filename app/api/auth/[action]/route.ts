@@ -1,117 +1,98 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import {
-  hashPassword,
-  verifyPassword,
-  isPasswordHashed,
-} from "@/lib/password";
-
-export const dynamic = "force-dynamic";
+import { hashPassword, verifyPassword } from "@/lib/password";
 
 interface AuthRequestBody {
   name?: string;
   username?: string;
   email?: string;
   password?: string;
-}
-
-// Otomatis ubah semua password teks biasa yang ada di Prisma Studio menjadi kode acak (enkripsi)
-async function upgradePlainPasswords() {
-  try {
-    const allUsers = await prisma.user.findMany();
-    for (const u of allUsers) {
-      if (u.password && !isPasswordHashed(u.password)) {
-        const encrypted = hashPassword(u.password);
-        await prisma.user.update({
-          where: { id: u.id },
-          data: { password: encrypted },
-        });
-      }
-    }
-  } catch (err) {
-    console.error("Gagal auto-enkripsi password lama:", err);
-  }
-}
-
-export async function GET(
-  _request: Request,
-  context: { params: Promise<{ action: string }> }
-) {
-  await upgradePlainPasswords();
-  const { action } = await context.params;
-
-  if (action === "me") {
-    return NextResponse.json({ user: null });
-  }
-
-  return NextResponse.json({ message: "Auth endpoint aktif" });
+  role?: string;
 }
 
 export async function POST(
   request: Request,
   context: { params: Promise<{ action: string }> }
 ) {
-  await upgradePlainPasswords();
-  const { action } = await context.params;
-
-  if (action === "logout") {
-    return NextResponse.json({ message: "Berhasil keluar" });
-  }
-
   try {
+    const { action } = await context.params;
     const body = (await request.json()) as AuthRequestBody;
-    const rawIdentifier = (
-      body.name ||
-      body.username ||
-      body.email ||
-      ""
-    ).trim();
-    const rawEmail = (body.email || "").trim().toLowerCase();
-    const rawPassword = body.password || "";
+    const userAgent = request.headers.get("user-agent") || "Web Browser";
 
-    // 1. REGISTER / DAFTAR AKUN BARU (Simpan Password Terenkripsi ke Prisma)
-    if (action === "register" || action === "signup") {
-      if (!rawIdentifier || !rawPassword) {
-        return NextResponse.json(
-          { error: "Nama/Username dan Password wajib diisi!" },
-          { status: 400 }
-        );
+    // 1. Jika user atau admin melakukan LOGOUT
+    if (action === "logout" || action === "signout") {
+      const logoutName = String(
+        body.name || body.username || body.email || "Pengguna"
+      ).trim();
+      const logoutRole = String(
+        body.role ||
+          (logoutName.toLowerCase().includes("admin") ? "ADMIN" : "CUSTOMER")
+      ).toUpperCase();
+
+      try {
+        await prisma.loginHistory.create({
+          data: {
+            logCode: `OUT-${Math.floor(100000 + Math.random() * 900000)}`,
+            username: logoutName,
+            role: logoutRole,
+            device: userAgent.slice(0, 120),
+            status: "LOGOUT",
+          },
+        });
+      } catch {
+        // Abaikan jika gagal simpan log
       }
 
-      if (rawPassword.length < 6) {
-        return NextResponse.json(
-          { error: "Password minimal 6 karakter." },
-          { status: 400 }
-        );
-      }
+      return NextResponse.json({ message: "Logout tercatat" }, { status: 200 });
+    }
 
-      const existingUsers = await prisma.user.findMany();
-      const duplicate = existingUsers.find(
-        (u) =>
-          u.name.toLowerCase() === rawIdentifier.toLowerCase() ||
-          (rawEmail && u.email.toLowerCase() === rawEmail)
+    const cleanEmail = (body.email ?? "").trim().toLowerCase();
+    const rawPassword = body.password ?? "";
+
+    if (!cleanEmail || !rawPassword) {
+      return NextResponse.json(
+        { error: "Email dan password wajib diisi" },
+        { status: 400 }
       );
+    }
 
-      if (duplicate) {
+    // 2. Jika REGISTER akun baru
+    if (action === "register" || action === "signup") {
+      const existing = await prisma.user.findUnique({
+        where: { email: cleanEmail },
+      });
+
+      if (existing) {
         return NextResponse.json(
-          { error: "Username atau Email sudah terdaftar!" },
-          { status: 409 }
+          { error: "Email sudah terdaftar, silakan login" },
+          { status: 400 }
         );
       }
 
-      const encryptedPassword = hashPassword(rawPassword);
-
+      const hashedPassword = await hashPassword(rawPassword);
+      const isRoleAdmin = cleanEmail.includes("admin");
       const newUser = await prisma.user.create({
         data: {
-          name: rawIdentifier,
-          email:
-            rawEmail ||
-            `${rawIdentifier.toLowerCase().replace(/\s+/g, "")}@gmail.com`,
-          password: encryptedPassword,
-          role:
-            rawIdentifier.toLowerCase() === "admin" ? "ADMIN" : "CUSTOMER",
+          name: (body.name ?? cleanEmail.split("@")[0]).trim(),
+          email: cleanEmail,
+          password: hashedPassword,
+          role: isRoleAdmin ? "admin" : "user",
         },
       });
+
+      try {
+        await prisma.loginHistory.create({
+          data: {
+            logCode: `REG-${Math.floor(100000 + Math.random() * 900000)}`,
+            username: `${newUser.name} (${newUser.email})`,
+            role: isRoleAdmin ? "ADMIN" : "CUSTOMER",
+            device: userAgent.slice(0, 120),
+            status: "REGISTER & LOGIN",
+          },
+        });
+      } catch {
+        // Abaikan jika tabel belum sinkron
+      }
 
       return NextResponse.json(
         {
@@ -126,56 +107,70 @@ export async function POST(
       );
     }
 
-    // 2. LOGIN / MASUK AKUN (Cocokkan Password Asli Customer dengan Hash di Prisma)
+    // 3. Jika LOGIN
     if (action === "login" || action === "signin") {
-      if (!rawIdentifier || !rawPassword) {
-        return NextResponse.json(
-          { error: "Masukkan username/email dan password Anda." },
-          { status: 400 }
-        );
-      }
-
-      const users = await prisma.user.findMany();
-      const foundUser = users.find(
-        (u) =>
-          u.name.toLowerCase() === rawIdentifier.toLowerCase() ||
-          u.email.toLowerCase() === rawIdentifier.toLowerCase()
-      );
-
-      if (!foundUser) {
-        return NextResponse.json(
-          { error: "Akun tidak ditemukan. Silakan daftar terlebih dahulu." },
-          { status: 401 }
-        );
-      }
-
-      const isMatch = verifyPassword(rawPassword, foundUser.password);
-      if (!isMatch) {
-        return NextResponse.json(
-          { error: "Password yang Anda masukkan salah!" },
-          { status: 401 }
-        );
-      }
-
-      return NextResponse.json({
-        user: {
-          id: foundUser.id,
-          name: foundUser.name,
-          email: foundUser.email,
-          role: foundUser.role,
-        },
+      const user = await prisma.user.findUnique({
+        where: { email: cleanEmail },
       });
+
+      if (!user) {
+        return NextResponse.json(
+          { error: "Email atau password salah" },
+          { status: 401 }
+        );
+      }
+
+      const isValid =
+        (await verifyPassword(rawPassword, user.password)) ||
+        user.password === rawPassword;
+
+      if (!isValid) {
+        return NextResponse.json(
+          { error: "Email atau password salah" },
+          { status: 401 }
+        );
+      }
+
+      const roleLabel =
+        user.role.toLowerCase() === "admin" || cleanEmail.includes("admin")
+          ? "ADMIN"
+          : "CUSTOMER";
+
+      try {
+        await prisma.loginHistory.create({
+          data: {
+            logCode: `LOG-${Math.floor(100000 + Math.random() * 900000)}`,
+            username: `${user.name} (${user.email})`,
+            role: roleLabel,
+            device: userAgent.slice(0, 120),
+            status: "LOGIN BERHASIL",
+          },
+        });
+      } catch {
+        // Abaikan jika gagal mencatat log
+      }
+
+      return NextResponse.json(
+        {
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+          },
+        },
+        { status: 200 }
+      );
     }
 
     return NextResponse.json(
-      { error: "Action auth tidak dikenali" },
+      { error: "Action autentikasi tidak dikenali" },
       { status: 400 }
     );
-  } catch (error) {
-    console.error(`POST /api/auth/${action} error:`, error);
-    return NextResponse.json(
-      { error: "Terjadi kesalahan pada server autentikasi" },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    console.error("POST /api/auth/[action] error:", error);
+    const message =
+      error instanceof Error ? error.message : "Terjadi kesalahan autentikasi";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

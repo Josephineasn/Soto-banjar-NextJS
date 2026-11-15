@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 
 interface OrderItem {
-  id?: number;
+  id?: number | string;
   name?: string;
   title?: string;
   price?: number;
@@ -14,25 +14,28 @@ interface OrderItem {
 interface OrderRecord {
   id: number | string;
   orderNumber?: string;
+  orderCode?: string;
+  accountName?: string;
   customerName?: string;
+  recipientName?: string;
   name?: string;
   customerPhone?: string;
   phone?: string;
-  phoneNumber?: string;
-  telp?: string;
+  customerEmail?: string;
   area?: string;
+  deliveryArea?: string;
+  service?: string;
   shippingService?: string;
   address?: string;
+  addressBenchmark?: string;
   landmark?: string;
   patokan?: string;
-  note?: string;
-  notes?: string;
-  orderNotes?: string;
-  catatan?: string;
-  description?: string;
+  paymentMethod?: string;
+  vaNumber?: string;
+  virtualAccount?: string;
   useThermalBag?: boolean;
   thermalBagCost?: number;
-  voucherCode?: string;
+  serviceFee?: number;
   discount?: number;
   subtotal?: number;
   shippingCost?: number;
@@ -41,130 +44,290 @@ interface OrderRecord {
   totalPrice?: number;
   grandTotal?: number;
   total?: number;
-  paymentMethod?: string;
+  note?: string;
+  notes?: string;
+  orderNotes?: string;
   status?: string;
   createdAt?: string;
   items?: OrderItem[];
 }
 
+interface AlertBoxState {
+  visible: boolean;
+  title: string;
+  message: string;
+  type: "success" | "error" | "info";
+}
+
+function normalizeOrderKey(ord: OrderRecord): string {
+  const raw = String(ord.orderNumber || ord.orderCode || ord.id || "");
+  return raw.replace(/^#/, "").trim().toUpperCase();
+}
+
+function getOrderTotal(ord: OrderRecord): number {
+  const itemsSub = Array.isArray(ord.items)
+    ? ord.items.reduce(
+        (sum, it) =>
+          sum + Number(it.price ?? 0) * Number(it.qty ?? it.quantity ?? 1),
+        0
+      )
+    : Number(ord.subtotal ?? 0);
+  const ship = Number(ord.shippingCost ?? ord.shippingFee ?? 0);
+  const thermal =
+    ord.useThermalBag || Number(ord.serviceFee ?? ord.thermalBagCost ?? 0) > 0
+      ? Number(ord.thermalBagCost ?? ord.serviceFee ?? 5000)
+      : 0;
+  const disc = Number(ord.discount ?? 0);
+
+  return Number(
+    ord.totalAmount ??
+      ord.totalPrice ??
+      ord.grandTotal ??
+      ord.total ??
+      Math.max(0, itemsSub + ship + thermal - disc)
+  );
+}
+
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [filterStatus, setFilterStatus] = useState<string>("ALL");
-
+  const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [selectedOrder, setSelectedOrder] = useState<OrderRecord | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  const [modalAlert, setModalAlert] = useState<{ show: boolean; title: string; message: string; isSuccess: boolean }>({
-    show: false,
+  // State untuk Kotak Alert Kustom (Bukan alert browser atas)
+  const [alertBox, setAlertBox] = useState<AlertBoxState>({
+    visible: false,
     title: "",
     message: "",
-    isSuccess: true,
+    type: "success",
   });
 
+  const showCustomAlert = (
+    title: string,
+    message: string,
+    type: "success" | "error" | "info" = "success"
+  ) => {
+    setAlertBox({ visible: true, title, message, type });
+  };
+
+  const closeCustomAlert = () => {
+    setAlertBox((prev) => ({ ...prev, visible: false }));
+  };
+
   useEffect(() => {
-    async function fetchOrders() {
+    let isCancelled = false;
+
+    async function loadAndSyncOrders() {
       try {
-        const res = await fetch("/api/orders", { cache: "no-store" });
-        if (res.ok) {
-          const data = (await res.json()) as OrderRecord[];
-          setOrders(Array.isArray(data) ? data : []);
+        let dbOrders: OrderRecord[] = [];
+        try {
+          const res = await fetch("/api/orders", { cache: "no-store" });
+          if (res.ok) {
+            const data: unknown = await res.json();
+            if (Array.isArray(data)) {
+              dbOrders = data as OrderRecord[];
+            }
+          }
+        } catch {
+          // Lanjut ke lokal
+        }
+
+        let localOrders: OrderRecord[] = [];
+        if (typeof window !== "undefined") {
+          try {
+            const rawLocal = window.localStorage.getItem(
+              "soto_complete_orders"
+            );
+            if (rawLocal) {
+              const parsed: unknown = JSON.parse(rawLocal);
+              if (Array.isArray(parsed)) {
+                localOrders = parsed as OrderRecord[];
+              }
+            }
+          } catch {
+            // Abaikan
+          }
+        }
+
+        const dbMap = new Map<string, OrderRecord>();
+        for (const dbOrd of dbOrders) {
+          const key = normalizeOrderKey(dbOrd);
+          if (key) dbMap.set(key, dbOrd);
+        }
+
+        for (const locOrd of localOrders) {
+          const key = normalizeOrderKey(locOrd);
+          if (key && !dbMap.has(key)) {
+            const normalizedLocal: OrderRecord = {
+              ...locOrd,
+              id: key.startsWith("SBN-") ? key : `SBN-${key}`,
+              orderNumber: key.startsWith("SBN-") ? `#${key}` : `#SBN-${key}`,
+            };
+            dbMap.set(key, normalizedLocal);
+
+            void fetch("/api/orders", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(normalizedLocal),
+            }).catch(() => {});
+          }
+        }
+
+        const combined = Array.from(dbMap.values()).sort((a, b) => {
+          const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return tB - tA;
+        });
+
+        if (!isCancelled) {
+          setOrders(combined);
         }
       } catch (err) {
         console.error("Gagal memuat pesanan:", err);
       } finally {
-        setLoading(false);
+        if (!isCancelled) {
+          setLoading(false);
+        }
       }
     }
 
-    void fetchOrders();
+    void loadAndSyncOrders();
+
+    const handleSync = () => {
+      void loadAndSyncOrders();
+    };
+    window.addEventListener("ordersUpdated", handleSync);
+    window.addEventListener("storage", handleSync);
+    return () => {
+      isCancelled = true;
+      window.removeEventListener("ordersUpdated", handleSync);
+      window.removeEventListener("storage", handleSync);
+    };
   }, []);
 
-  async function handleStatusChange(orderId: number | string, newStatus: string) {
+  const handleStatusChange = async (ord: OrderRecord, newStatus: string) => {
+    const targetKey = normalizeOrderKey(ord);
+    const cleanId = targetKey.startsWith("SBN-")
+      ? targetKey
+      : `SBN-${targetKey}`;
+    const custName =
+      ord.customerName || ord.recipientName || ord.name || "Pelanggan";
+
+    setUpdatingId(targetKey);
+
     try {
-      const res = await fetch(`/api/orders/${orderId}`, {
+      setOrders((prev) =>
+        prev.map((item) =>
+          normalizeOrderKey(item) === targetKey
+            ? { ...item, status: newStatus }
+            : item
+        )
+      );
+
+      if (typeof window !== "undefined") {
+        try {
+          const rawLocal = window.localStorage.getItem("soto_complete_orders");
+          if (rawLocal) {
+            const parsed: unknown = JSON.parse(rawLocal);
+            if (Array.isArray(parsed)) {
+              const updatedLocal = (parsed as OrderRecord[]).map((item) =>
+                normalizeOrderKey(item) === targetKey
+                  ? { ...item, status: newStatus }
+                  : item
+              );
+              window.localStorage.setItem(
+                "soto_complete_orders",
+                JSON.stringify(updatedLocal)
+              );
+            }
+          }
+        } catch {
+          // Abaikan
+        }
+      }
+
+      const res = await fetch("/api/orders", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({
+          ...ord,
+          id: cleanId,
+          status: newStatus,
+        }),
       });
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("ordersUpdated"));
+      }
 
       if (res.ok) {
-        setOrders((prev) =>
-          prev.map((ord) => (ord.id === orderId ? { ...ord, status: newStatus } : ord))
+        showCustomAlert(
+          "Status Pesanan Diperbarui",
+          `Status pesanan #${cleanId} atas nama ${custName} berhasil diubah menjadi "${newStatus}".`,
+          "success"
         );
-        setModalAlert({
-          show: true,
-          title: "Berhasil!",
-          message: `Status pesanan berhasil diubah menjadi "${newStatus}".`,
-          isSuccess: true,
-        });
       } else {
-        setModalAlert({
-          show: true,
-          title: "Gagal!",
-          message: "Gagal memperbarui status pesanan di database.",
-          isSuccess: false,
-        });
+        showCustomAlert(
+          "Tersimpan di Lokal",
+          `Status pesanan #${cleanId} (${custName}) telah diperbarui menjadi "${newStatus}".`,
+          "info"
+        );
       }
-    } catch {
-      setModalAlert({
-        show: true,
-        title: "Kesalahan Jaringan!",
-        message: "Terjadi kesalahan koneksi saat memperbarui status.",
-        isSuccess: false,
-      });
+    } catch (error) {
+      console.error("Gagal mengubah status:", error);
+      showCustomAlert(
+        "Gagal Memperbarui Status",
+        "Terjadi kendala saat menghubungi server database.",
+        "error"
+      );
+    } finally {
+      setUpdatingId(null);
     }
-  }
+  };
 
-  function cleanOrderNote(rawNote?: string): string {
-    if (!rawNote) return "-";
-    const cleaned = rawNote.replace(/\[VA:[^\]]*\]/g, "").replace(/\[HP:[^\]]*\]/g, "").trim();
-    return cleaned || "-";
-  }
-
-  function extractPhone(ord: OrderRecord): string {
-    const directPhone = ord.customerPhone || ord.phone || ord.phoneNumber || ord.telp;
-    if (directPhone && directPhone !== "-") return directPhone;
-
-    const rawNote = ord.orderNotes || ord.note || ord.notes || ord.catatan || "";
-    const matchHp = rawNote.match(/\[HP:\s*([^\]]+)\]/);
-    if (matchHp && matchHp[1]) {
-      return matchHp[1].trim();
-    }
-    return "-";
-  }
-
-  const filteredOrders = orders.filter((ord) => {
-    const st = (ord.status || "PENDING").toUpperCase();
-    if (filterStatus === "ALL") return true;
-    if (filterStatus === "PENDING") return st === "PENDING" || st === "PROSES" || st === "PERLU_DIMASAK";
-    if (filterStatus === "DIANTAR") return st === "DIANTAR" || st === "DIKIRIM";
-    if (filterStatus === "SELESAI") return st === "SELESAI" || st === "COMPLETED" || st === "TERKIRIM";
-    return true;
-  });
+  const filteredOrders = useMemo(() => {
+    if (statusFilter === "ALL") return orders;
+    return orders.filter(
+      (o) => String(o.status || "PENDING").toUpperCase() === statusFilter
+    );
+  }, [orders, statusFilter]);
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", backgroundColor: "#FAF6EE" }}>
+    <div
+      style={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        backgroundColor: "#FAF6EE",
+        minHeight: "100vh",
+        fontFamily: "system-ui, -apple-system, sans-serif",
+      }}
+    >
       <header
         style={{
           backgroundColor: "#FFFFFF",
           borderBottom: "1px solid #E5DEC9",
           padding: "18px 32px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
         }}
       >
-        <div>
-          <h1 style={{ margin: 0, fontSize: "22px", fontWeight: 900, color: "#2A1A11" }}>
-            Daftar Pesanan Online Masuk
-          </h1>
-          <p style={{ margin: "3px 0 0", fontSize: "12.5px", color: "#6D4C30" }}>
-            Pantau rincian alamat pengantaran customer dan update status pengiriman.
-          </p>
-        </div>
+        <h1
+          style={{
+            margin: 0,
+            fontSize: "22px",
+            fontWeight: 900,
+            color: "#2A1A11",
+          }}
+        >
+          Daftar Pesanan Online Masuk
+        </h1>
+        <p style={{ margin: "3px 0 0", fontSize: "12.5px", color: "#6D4C30" }}>
+          Pantau rincian alamat pengantaran customer dan update status
+          pengiriman.
+        </p>
       </header>
 
-      <div style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "20px" }}>
+      <div style={{ padding: "32px" }}>
         <div
           style={{
             backgroundColor: "#FFFFFF",
@@ -174,16 +337,40 @@ export default function AdminOrdersPage() {
             boxShadow: "0 4px 15px rgba(0,0,0,0.03)",
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
-            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 900, color: "#2A1A11" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "20px",
+              flexWrap: "wrap",
+              gap: "12px",
+            }}
+          >
+            <h2
+              style={{
+                margin: 0,
+                fontSize: "16px",
+                fontWeight: 900,
+                color: "#2A1A11",
+              }}
+            >
               Pesanan Online Delivery
-            </h3>
+            </h2>
 
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <span style={{ fontSize: "12.5px", fontWeight: 800, color: "#6D4C30" }}>Filter Status:</span>
+              <span
+                style={{
+                  fontSize: "12.5px",
+                  fontWeight: 800,
+                  color: "#6D4C30",
+                }}
+              >
+                Filter Status:
+              </span>
               <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
                 style={{
                   padding: "8px 14px",
                   borderRadius: "10px",
@@ -196,26 +383,56 @@ export default function AdminOrdersPage() {
                 }}
               >
                 <option value="ALL">Semua Status</option>
-                <option value="PENDING">Pending / Proses</option>
-                <option value="DIANTAR">Sedang Diantar</option>
+                <option value="PENDING">Pending</option>
+                <option value="DIPROSES">Diproses</option>
+                <option value="DIKIRIM">Dikirim</option>
                 <option value="SELESAI">Selesai</option>
+                <option value="DIBATALKAN">Dibatalkan</option>
               </select>
             </div>
           </div>
 
           {loading ? (
-            <div style={{ padding: "40px", textAlign: "center", color: "#6D4C30", fontWeight: 700 }}>
-              Memuat data pesanan...
+            <div
+              style={{
+                padding: "40px",
+                textAlign: "center",
+                color: "#6D4C30",
+                fontWeight: 700,
+              }}
+            >
+              Memuat daftar pesanan...
             </div>
           ) : filteredOrders.length === 0 ? (
-            <div style={{ padding: "40px", textAlign: "center", color: "#8A6B47", fontWeight: 700 }}>
-              Belum ada pesanan masuk dalam kategori ini.
+            <div
+              style={{
+                padding: "40px",
+                textAlign: "center",
+                color: "#8A6B47",
+                fontWeight: 700,
+              }}
+            >
+              Belum ada pesanan untuk status ini.
             </div>
           ) : (
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13px" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  textAlign: "left",
+                  fontSize: "13px",
+                }}
+              >
                 <thead>
-                  <tr style={{ borderBottom: "2px solid #E5DEC9", color: "#6D4C30", fontSize: "12px", fontWeight: 900 }}>
+                  <tr
+                    style={{
+                      borderBottom: "2px solid #E5DEC9",
+                      color: "#6D4C30",
+                      fontSize: "12px",
+                      fontWeight: 900,
+                    }}
+                  >
                     <th style={{ padding: "12px 10px" }}>Waktu Masuk</th>
                     <th style={{ padding: "12px 10px" }}>ID Order</th>
                     <th style={{ padding: "12px 10px" }}>Penerima &amp; Kontak</th>
@@ -229,34 +446,86 @@ export default function AdminOrdersPage() {
                 </thead>
                 <tbody>
                   {filteredOrders.map((ord) => {
+                    const key = normalizeOrderKey(ord);
+                    const codeText = key.startsWith("SBN-")
+                      ? `#${key}`
+                      : `#SBN-${key}`;
+                    const custName =
+                      ord.customerName ||
+                      ord.recipientName ||
+                      ord.name ||
+                      "Pelanggan";
+                    const phoneText = ord.customerPhone || ord.phone || "-";
+                    const areaText =
+                      ord.area || ord.deliveryArea || "Jabodetabek";
+                    const courierText =
+                      ord.shippingService || ord.service || "Kurir Instant";
+                    const totalAmt = getOrderTotal(ord);
+                    const rawStatus = String(
+                      ord.status || "PENDING"
+                    ).toUpperCase();
+
+                    const isSelesai =
+                      rawStatus === "SELESAI" ||
+                      rawStatus === "COMPLETED" ||
+                      rawStatus === "TERKIRIM";
+                    const isBatal =
+                      rawStatus === "DIBATALKAN" || rawStatus === "CANCELLED";
+                    const isProses =
+                      rawStatus === "DIPROSES" ||
+                      rawStatus === "PROSES" ||
+                      rawStatus === "DIKIRIM" ||
+                      rawStatus === "DIANTAR";
+
                     const timeStr = ord.createdAt
-                      ? new Date(ord.createdAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB"
+                      ? new Date(ord.createdAt).toLocaleTimeString("id-ID", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        }) + " WIB"
                       : "Baru saja";
-                    const orderIdText = ord.orderNumber || `#SBN-${ord.id}`;
-                    const custName = ord.customerName || ord.name || "Customer";
-                    const custPhone = extractPhone(ord);
-                    const areaName = ord.area || "Jabodetabek";
-                    const addressText = ord.address || "-";
-                    const totalAmt = Number(ord.totalAmount ?? ord.subtotal ?? ord.totalPrice ?? ord.grandTotal ?? ord.total ?? 0);
-                    const payMethod = ord.paymentMethod || "BCA Virtual Account";
-                    const currentStatus = ord.status || "PENDING";
 
                     return (
-                      <tr key={ord.id} style={{ borderBottom: "1px solid #EFE3C8", color: "#2A1A11", verticalAlign: "top" }}>
-                        <td style={{ padding: "14px 10px", fontWeight: 700, whiteSpace: "nowrap", color: "#6D4C30" }}>
-                          ⏱️ {timeStr}
+                      <tr
+                        key={codeText}
+                        style={{
+                          borderBottom: "1px solid #EFE3C8",
+                          color: "#2A1A11",
+                          verticalAlign: "top",
+                        }}
+                      >
+                        <td
+                          style={{
+                            padding: "16px 10px",
+                            whiteSpace: "nowrap",
+                            color: "#475569",
+                            fontWeight: 700,
+                          }}
+                        >
+                          ⏱ {timeStr}
                         </td>
-                        <td style={{ padding: "14px 10px", fontWeight: 900, whiteSpace: "nowrap" }}>
-                          {orderIdText}
+                        <td
+                          style={{
+                            padding: "16px 10px",
+                            fontWeight: 900,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {codeText}
                         </td>
-                        <td style={{ padding: "14px 10px", minWidth: "150px" }}>
-                          <div style={{ fontWeight: 900, color: "#2A1A11" }}>{custName}</div>
-                          <div style={{ fontSize: "12px", color: "#6D4C30", fontWeight: 700, marginTop: "3px" }}>
-                            {custPhone}
+                        <td style={{ padding: "16px 10px" }}>
+                          <div style={{ fontWeight: 900 }}>{custName}</div>
+                          <div
+                            style={{
+                              fontSize: "12px",
+                              color: "#6D4C30",
+                              marginTop: "2px",
+                            }}
+                          >
+                            {phoneText}
                           </div>
                         </td>
-                        <td style={{ padding: "14px 10px", minWidth: "200px", maxWidth: "240px" }}>
-                          <div
+                        <td style={{ padding: "16px 10px", maxWidth: "220px" }}>
+                          <span
                             style={{
                               display: "inline-block",
                               backgroundColor: "#FEF3C7",
@@ -268,78 +537,156 @@ export default function AdminOrdersPage() {
                               marginBottom: "4px",
                             }}
                           >
-                            {areaName}
-                          </div>
-                          <div style={{ fontSize: "12px", color: "#2A1A11", lineHeight: "1.4", fontWeight: 600 }}>
-                            {addressText}
+                            {areaText}
+                          </span>
+                          <div
+                            style={{
+                              fontSize: "12.5px",
+                              color: "#334155",
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            {ord.address || "-"}
                           </div>
                         </td>
-                        <td style={{ padding: "14px 10px", minWidth: "180px" }}>
-                          {ord.items && ord.items.length > 0 ? (
-                            ord.items.map((it, i) => (
-                              <div key={i} style={{ marginBottom: "4px", fontSize: "12px" }}>
-                                <span style={{ backgroundColor: "#E5DEC9", padding: "1px 6px", borderRadius: "4px", fontWeight: 800, marginRight: "6px" }}>
-                                  {it.qty || it.quantity || 1}x
-                                </span>
-                                <span style={{ fontWeight: 700 }}>{it.name || it.title || "Menu"}</span>
-                              </div>
-                            ))
+                        <td style={{ padding: "16px 10px" }}>
+                          {Array.isArray(ord.items) && ord.items.length > 0 ? (
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "4px",
+                              }}
+                            >
+                              {ord.items.map((it, idx) => (
+                                <div
+                                  key={idx}
+                                  style={{
+                                    fontSize: "12.5px",
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      backgroundColor: "#EFE3C8",
+                                      padding: "1px 6px",
+                                      borderRadius: "4px",
+                                      marginRight: "6px",
+                                      fontSize: "11px",
+                                    }}
+                                  >
+                                    {it.qty ?? it.quantity ?? 1}x
+                                  </span>
+                                  {it.name || it.title || "Menu"}
+                                </div>
+                              ))}
+                            </div>
                           ) : (
-                            <span style={{ fontSize: "12px", color: "#8A6B47" }}>Pesanan Dapur</span>
+                            <span style={{ fontSize: "12px", color: "#8A6B47" }}>
+                              Paket Soto Banjar
+                            </span>
                           )}
                         </td>
-                        <td style={{ padding: "14px 10px", whiteSpace: "nowrap" }}>
-                          <div style={{ fontWeight: 900, color: "#166534" }}>Rp {totalAmt.toLocaleString("id-ID")}</div>
-                          <div style={{ fontSize: "11px", color: "#6D4C30", marginTop: "2px" }}>Kurir: {ord.shippingService || "Standar"}</div>
+                        <td
+                          style={{
+                            padding: "16px 10px",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontWeight: 900,
+                              color: "#15803D",
+                              fontSize: "13.5px",
+                            }}
+                          >
+                            Rp {totalAmt.toLocaleString("id-ID")}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "11px",
+                              color: "#6D4C30",
+                              marginTop: "2px",
+                            }}
+                          >
+                            Kurir: {courierText}
+                          </div>
                         </td>
-                        <td style={{ padding: "14px 10px", whiteSpace: "nowrap" }}>
-                          <span style={{ backgroundColor: "#FAF6EE", border: "1px solid #D6C7B2", padding: "4px 8px", borderRadius: "8px", fontSize: "11.5px", fontWeight: 800, color: "#432818" }}>
-                            {payMethod}
+                        <td style={{ padding: "16px 10px" }}>
+                          <span
+                            style={{
+                              display: "inline-block",
+                              border: "1px solid #D6C7B2",
+                              backgroundColor: "#FAF6EE",
+                              padding: "4px 10px",
+                              borderRadius: "8px",
+                              fontSize: "11.5px",
+                              fontWeight: 800,
+                              color: "#2A1A11",
+                            }}
+                          >
+                            {ord.paymentMethod || "BCA Virtual Account"}
                           </span>
                         </td>
-                        <td style={{ padding: "14px 10px", whiteSpace: "nowrap" }}>
+                        <td style={{ padding: "16px 10px" }}>
                           <select
-                            value={currentStatus}
-                            onChange={(e) => void handleStatusChange(ord.id, e.target.value)}
+                            value={
+                              isSelesai
+                                ? "SELESAI"
+                                : isBatal
+                                ? "DIBATALKAN"
+                                : rawStatus === "DIKIRIM"
+                                ? "DIKIRIM"
+                                : rawStatus === "DIPROSES"
+                                ? "DIPROSES"
+                                : "PENDING"
+                            }
+                            disabled={updatingId === key}
+                            onChange={(e) =>
+                              void handleStatusChange(ord, e.target.value)
+                            }
                             style={{
-                              padding: "6px 10px",
+                              padding: "6px 12px",
                               borderRadius: "8px",
-                              border: "1.5px solid #D6C7B2",
-                              backgroundColor:
-                                currentStatus.toUpperCase().includes("SELESAI") || currentStatus.toUpperCase().includes("TERKIRIM")
-                                  ? "#DCFCE7"
-                                  : currentStatus.toUpperCase().includes("DIANTAR") || currentStatus.toUpperCase().includes("DIKIRIM")
-                                  ? "#FEF3C7"
-                                  : "#FEE2E2",
-                              color:
-                                currentStatus.toUpperCase().includes("SELESAI") || currentStatus.toUpperCase().includes("TERKIRIM")
-                                  ? "#166534"
-                                  : currentStatus.toUpperCase().includes("DIANTAR") || currentStatus.toUpperCase().includes("DIKIRIM")
-                                  ? "#92400E"
-                                  : "#DC2626",
                               fontSize: "12px",
                               fontWeight: 900,
                               cursor: "pointer",
+                              border: isSelesai
+                                ? "1.5px solid #86EFAC"
+                                : isProses
+                                ? "1.5px solid #FDE68A"
+                                : "1.5px solid #FCA5A5",
+                              backgroundColor: isSelesai
+                                ? "#DCFCE7"
+                                : isProses
+                                ? "#FEF3C7"
+                                : "#FEE2E2",
+                              color: isSelesai
+                                ? "#166534"
+                                : isProses
+                                ? "#B45309"
+                                : "#DC2626",
                             }}
                           >
                             <option value="PENDING">Pending</option>
-                            <option value="PROSES">Diproses / Dimasak</option>
-                            <option value="DIANTAR">Sedang Diantar</option>
+                            <option value="DIPROSES">Diproses</option>
+                            <option value="DIKIRIM">Dikirim</option>
                             <option value="SELESAI">Selesai</option>
+                            <option value="DIBATALKAN">Dibatalkan</option>
                           </select>
                         </td>
-                        <td style={{ padding: "14px 10px", whiteSpace: "nowrap" }}>
+                        <td style={{ padding: "16px 10px" }}>
                           <button
                             type="button"
                             onClick={() => setSelectedOrder(ord)}
                             style={{
                               backgroundColor: "#2A1A11",
-                              color: "#EFE3C8",
+                              color: "#FAF6EE",
                               border: "none",
-                              padding: "7px 16px",
+                              padding: "7px 14px",
                               borderRadius: "8px",
                               fontSize: "12px",
-                              fontWeight: 900,
+                              fontWeight: 800,
                               cursor: "pointer",
                             }}
                           >
@@ -356,242 +703,15 @@ export default function AdminOrdersPage() {
         </div>
       </div>
 
-      {/* MODAL DETAIL PESANAN */}
-      {selectedOrder && (() => {
-        const subtotalCalc = selectedOrder.items
-          ? selectedOrder.items.reduce((sum, it) => sum + (it.price || 0) * (it.qty || it.quantity || 1), 0)
-          : Number(selectedOrder.subtotal ?? 0);
-        
-        const shippingFee = Number(selectedOrder.shippingCost ?? selectedOrder.shippingFee ?? 0);
-        const thermalCost = selectedOrder.useThermalBag ? Number(selectedOrder.thermalBagCost ?? 5000) : 0;
-        const discountAmt = Number(selectedOrder.discount ?? 0);
-        const finalTotal = Number(selectedOrder.totalAmount ?? selectedOrder.totalPrice ?? selectedOrder.grandTotal ?? selectedOrder.total ?? (subtotalCalc + shippingFee + thermalCost - discountAmt));
-
-        return (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              backgroundColor: "rgba(0,0,0,0.65)",
-              zIndex: 1000,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "20px",
-            }}
-          >
-            <div
-              style={{
-                width: "100%",
-                maxWidth: "520px",
-                backgroundColor: "#FFFFFF",
-                borderRadius: "26px",
-                padding: "28px 26px",
-                boxShadow: "0 25px 60px rgba(0,0,0,0.35)",
-                border: "1px solid #E5DEC9",
-                maxHeight: "90vh",
-                overflowY: "auto",
-                position: "relative",
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => setSelectedOrder(null)}
-                style={{
-                  position: "absolute",
-                  top: "22px",
-                  right: "24px",
-                  width: "36px",
-                  height: "36px",
-                  borderRadius: "50%",
-                  border: "1px solid #D6C7B2",
-                  backgroundColor: "#FAF6EE",
-                  fontSize: "15px",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                  color: "#2A1A11",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                ✕
-              </button>
-
-              <h2 style={{ margin: "0 0 2px", fontSize: "20px", fontWeight: 900, color: "#1E293B" }}>
-                Rincian Detail Pesanan
-              </h2>
-              <p style={{ margin: "0 0 16px", fontSize: "13px", color: "#64748B", fontWeight: 700 }}>
-                ID: <strong style={{ color: "#0F172A" }}>{selectedOrder.orderNumber || `#SBN-${selectedOrder.id}`}</strong>
-              </p>
-
-              {/* Informasi Penerima (Nama di atas, No. Telp di bawah dengan teks hitam normal tanpa bold) */}
-              <div
-                style={{
-                  backgroundColor: "#FCFBF7",
-                  border: "1.5px solid #E5DEC9",
-                  borderRadius: "16px",
-                  padding: "16px",
-                  marginBottom: "14px",
-                }}
-              >
-                <div style={{ fontSize: "11.5px", fontWeight: 900, color: "#78350F", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>
-                  👤 INFORMASI PENERIMA
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "13px", color: "#1E293B" }}>
-                  <div><strong>Nama:</strong> {selectedOrder.customerName || selectedOrder.name || "-"}</div>
-                  <div><strong>No. Telp / WA:</strong> <span style={{ color: "#1E293B", fontWeight: 400 }}>{extractPhone(selectedOrder)}</span></div>
-                </div>
-              </div>
-
-              {/* Lokasi & Pengiriman (Catatan Customer hitam normal tanpa bold) */}
-              <div
-                style={{
-                  backgroundColor: "#FCFBF7",
-                  border: "1.5px solid #E5DEC9",
-                  borderRadius: "16px",
-                  padding: "16px",
-                  marginBottom: "14px",
-                }}
-              >
-                <div style={{ fontSize: "11.5px", fontWeight: 900, color: "#78350F", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>
-                  🛵 LOKASI &amp; PENGIRIMAN
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "13px", color: "#1E293B" }}>
-                  <div><strong>Area:</strong> {selectedOrder.area || "-"}</div>
-                  <div><strong>Alamat Lengkap:</strong> {selectedOrder.address || "-"}</div>
-                  <div><strong>Patokan Lokasi:</strong> {selectedOrder.landmark || selectedOrder.patokan || "-"}</div>
-                  <div><strong>Catatan Customer:</strong> <span style={{ color: "#1E293B", fontWeight: 400 }}>{cleanOrderNote(selectedOrder.orderNotes || selectedOrder.note || selectedOrder.notes || selectedOrder.catatan)}</span></div>
-                  <div><strong>Layanan Kurir:</strong> {selectedOrder.shippingService || "Standar"}</div>
-                </div>
-              </div>
-
-              {/* Daftar Menu Dipesan */}
-              <div
-                style={{
-                  backgroundColor: "#FCFBF7",
-                  border: "1.5px solid #E5DEC9",
-                  borderRadius: "16px",
-                  padding: "16px",
-                  marginBottom: "14px",
-                }}
-              >
-                <div style={{ fontSize: "11.5px", fontWeight: 900, color: "#78350F", textTransform: "uppercase", marginBottom: "10px", letterSpacing: "0.5px" }}>
-                  🍲 DAFTAR MENU DIPESAN
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "13px", color: "#1E293B" }}>
-                  {selectedOrder.items && selectedOrder.items.length > 0 ? (
-                    selectedOrder.items.map((it, idx) => (
-                      <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px dashed #E5DEC9", paddingBottom: "6px" }}>
-                        <span>
-                          <strong style={{ backgroundColor: "#E5DEC9", padding: "1px 6px", borderRadius: "4px", marginRight: "6px" }}>
-                            {it.qty || it.quantity || 1}x
-                          </strong>
-                          {it.name || it.title || "Menu"}
-                        </span>
-                        <span style={{ fontWeight: 800, color: "#166534" }}>
-                          Rp {((it.price || 0) * (it.qty || it.quantity || 1)).toLocaleString("id-ID")}
-                        </span>
-                      </div>
-                    ))
-                  ) : (
-                    <div>Tidak ada rincian item menu tercatat.</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Pembayaran & Rincian Tagihan */}
-              <div
-                style={{
-                  backgroundColor: "#FCFBF7",
-                  border: "1.5px solid #E5DEC9",
-                  borderRadius: "16px",
-                  padding: "16px",
-                  marginBottom: "20px",
-                }}
-              >
-                <div style={{ fontSize: "11.5px", fontWeight: 900, color: "#78350F", textTransform: "uppercase", marginBottom: "8px", letterSpacing: "0.5px" }}>
-                  💳 PEMBAYARAN &amp; RINCIAN TAGIHAN
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "13px", color: "#1E293B" }}>
-                  <div><strong>Metode Pembayaran:</strong> {selectedOrder.paymentMethod || "-"}</div>
-                  <div><strong>Status Pesanan:</strong> <span style={{ fontWeight: 800, color: "#166534" }}>{selectedOrder.status || "PENDING"}</span></div>
-                  
-                  <div style={{ borderTop: "1px dashed #D6C7B2", marginTop: "6px", paddingTop: "8px", display: "flex", flexDirection: "column", gap: "5px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", color: "#64748B" }}>
-                      <span>Subtotal Makanan:</span>
-                      <strong style={{ color: "#1E293B" }}>Rp {subtotalCalc.toLocaleString("id-ID")}</strong>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", color: "#64748B" }}>
-                      <span>Ongkos Kirim ({selectedOrder.area || "Standard"}):</span>
-                      <strong style={{ color: "#1E293B" }}>Rp {shippingFee.toLocaleString("id-ID")}</strong>
-                    </div>
-                    {selectedOrder.useThermalBag && (
-                      <div style={{ display: "flex", justifyContent: "space-between", color: "#64748B" }}>
-                        <span>Add-on Thermal Bag:</span>
-                        <strong style={{ color: "#1E293B" }}>Rp {thermalCost.toLocaleString("id-ID")}</strong>
-                      </div>
-                    )}
-                    {discountAmt > 0 && (
-                      <div style={{ display: "flex", justifyContent: "space-between", color: "#15803D" }}>
-                        <span>Diskon Voucher ({selectedOrder.voucherCode || "PROMO"}):</span>
-                        <strong>-Rp {discountAmt.toLocaleString("id-ID")}</strong>
-                      </div>
-                    )}
-                  </div>
-
-                  <div
-                    style={{
-                      borderTop: "1.5px solid #D6C7B2",
-                      paddingTop: "10px",
-                      marginTop: "4px",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      fontSize: "16px",
-                      fontWeight: 900,
-                      color: "#163A24",
-                    }}
-                  >
-                    <span>Total Pembayaran:</span>
-                    <span style={{ fontSize: "18px" }}>
-                      Rp {finalTotal.toLocaleString("id-ID")}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setSelectedOrder(null)}
-                style={{
-                  width: "100%",
-                  padding: "14px",
-                  borderRadius: "14px",
-                  border: "none",
-                  backgroundColor: "#2A1A11",
-                  color: "#EFE3C8",
-                  fontSize: "14px",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                }}
-              >
-                Tutup Rincian
-              </button>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* MODAL ALERT BOX */}
-      {modalAlert.show && (
+      {/* KOTAK POP-UP ALERT KUSTOM (PENGGANTI ALERT BROWSER ATAS) */}
+      {alertBox.visible && (
         <div
+          onClick={closeCustomAlert}
           style={{
             position: "fixed",
             inset: 0,
-            backgroundColor: "rgba(0,0,0,0.5)",
-            zIndex: 1000,
+            backgroundColor: "rgba(0, 0, 0, 0.55)",
+            zIndex: 10000,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -599,57 +719,325 @@ export default function AdminOrdersPage() {
           }}
         >
           <div
+            onClick={(e) => e.stopPropagation()}
             style={{
+              backgroundColor: "#FAF6EE",
+              borderRadius: "22px",
+              maxWidth: "400px",
               width: "100%",
-              maxWidth: "360px",
-              backgroundColor: "#FFFFFF",
-              borderRadius: "20px",
-              padding: "24px",
+              border: "2px solid #D6C7B2",
+              boxShadow: "0 25px 60px rgba(0, 0, 0, 0.35)",
+              overflow: "hidden",
               textAlign: "center",
-              boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
-              border: "1.5px solid #E5DEC9",
             }}
           >
             <div
               style={{
-                width: "48px",
-                height: "48px",
-                borderRadius: "50%",
-                backgroundColor: modalAlert.isSuccess ? "#DCFCE7" : "#FEE2E2",
-                color: modalAlert.isSuccess ? "#166534" : "#DC2626",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                margin: "0 auto 12px",
-                fontSize: "22px",
-                fontWeight: 900,
-              }}
-            >
-              {modalAlert.isSuccess ? "✓" : "!"}
-            </div>
-            <h3 style={{ margin: "0 0 6px", fontSize: "18px", fontWeight: 900, color: "#2A1A11" }}>
-              {modalAlert.title}
-            </h3>
-            <p style={{ margin: "0 0 20px", fontSize: "13px", color: "#6D4C30", lineHeight: 1.5 }}>
-              {modalAlert.message}
-            </p>
-            <button
-              type="button"
-              onClick={() => setModalAlert({ ...modalAlert, show: false })}
-              style={{
-                width: "100%",
-                padding: "11px",
-                borderRadius: "10px",
-                border: "none",
                 backgroundColor: "#2A1A11",
                 color: "#EFE3C8",
-                fontSize: "13px",
+                padding: "16px 20px",
                 fontWeight: 900,
-                cursor: "pointer",
+                fontSize: "16px",
               }}
             >
-              OK, Mengerti
-            </button>
+              {alertBox.type === "success"
+                ? "✅ Berhasil"
+                : alertBox.type === "error"
+                ? "⚠️ Peringatan"
+                : "ℹ️ Informasi"}
+            </div>
+            <div style={{ padding: "24px 22px" }}>
+              <h4
+                style={{
+                  margin: "0 0 8px",
+                  fontSize: "16px",
+                  fontWeight: 900,
+                  color: "#2A1A11",
+                }}
+              >
+                {alertBox.title}
+              </h4>
+              <p
+                style={{
+                  margin: "0 0 20px",
+                  fontSize: "13.5px",
+                  color: "#6D4C30",
+                  lineHeight: 1.5,
+                }}
+              >
+                {alertBox.message}
+              </p>
+              <button
+                type="button"
+                onClick={closeCustomAlert}
+                style={{
+                  width: "100%",
+                  padding: "11px 18px",
+                  borderRadius: "12px",
+                  border: "none",
+                  backgroundColor:
+                    alertBox.type === "success"
+                      ? "#166534"
+                      : alertBox.type === "error"
+                      ? "#DC2626"
+                      : "#2A1A11",
+                  color: "#FFFFFF",
+                  fontSize: "13.5px",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                Oke, Mengerti
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DETAIL PESANAN */}
+      {selectedOrder && (
+        <div
+          onClick={() => setSelectedOrder(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0,0,0,0.6)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: "#FAF6EE",
+              borderRadius: "20px",
+              maxWidth: "500px",
+              width: "100%",
+              border: "2px solid #D6C7B2",
+              overflow: "hidden",
+              boxShadow: "0 20px 50px rgba(0,0,0,0.3)",
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: "#2A1A11",
+                color: "#EFE3C8",
+                padding: "16px 22px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0, fontSize: "17px", fontWeight: 900 }}>
+                  Detail Pesanan #{normalizeOrderKey(selectedOrder)}
+                </h3>
+                <p
+                  style={{
+                    margin: "2px 0 0",
+                    fontSize: "11.5px",
+                    color: "#D5C5B3",
+                  }}
+                >
+                  Status:{" "}
+                  {String(selectedOrder.status || "PENDING").toUpperCase()}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedOrder(null)}
+                style={{
+                  background: "rgba(255,255,255,0.1)",
+                  border: "none",
+                  color: "#EFE3C8",
+                  width: "30px",
+                  height: "30px",
+                  borderRadius: "50%",
+                  cursor: "pointer",
+                  fontWeight: 900,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div
+              style={{
+                padding: "20px 22px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "12px",
+                fontSize: "13px",
+                color: "#2A1A11",
+                maxHeight: "75vh",
+                overflowY: "auto",
+              }}
+            >
+              <div
+                style={{
+                  backgroundColor: "#FFFFFF",
+                  padding: "12px 14px",
+                  borderRadius: "12px",
+                  border: "1px solid #E5DEC9",
+                }}
+              >
+                <div style={{ fontWeight: 900, marginBottom: "6px" }}>
+                  👤 Informasi Penerima
+                </div>
+                <div>
+                  <strong>Nama:</strong>{" "}
+                  {selectedOrder.customerName ||
+                    selectedOrder.recipientName ||
+                    selectedOrder.name ||
+                    "Pelanggan"}
+                </div>
+                <div>
+                  <strong>No. HP:</strong>{" "}
+                  {selectedOrder.customerPhone || selectedOrder.phone || "-"}
+                </div>
+                <div>
+                  <strong>Wilayah:</strong>{" "}
+                  {selectedOrder.area || selectedOrder.deliveryArea || "-"}
+                </div>
+                <div>
+                  <strong>Alamat:</strong> {selectedOrder.address || "-"}
+                </div>
+                {(selectedOrder.landmark ||
+                  selectedOrder.addressBenchmark ||
+                  selectedOrder.patokan) && (
+                  <div>
+                    <strong>Patokan:</strong>{" "}
+                    {selectedOrder.landmark ||
+                      selectedOrder.addressBenchmark ||
+                      selectedOrder.patokan}
+                  </div>
+                )}
+              </div>
+
+              <div
+                style={{
+                  backgroundColor: "#FFFFFF",
+                  padding: "12px 14px",
+                  borderRadius: "12px",
+                  border: "1px solid #E5DEC9",
+                }}
+              >
+                <div style={{ fontWeight: 900, marginBottom: "6px" }}>
+                  🍲 Rincian Menu Pesanan
+                </div>
+                {Array.isArray(selectedOrder.items) &&
+                selectedOrder.items.length > 0 ? (
+                  selectedOrder.items.map((it, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        padding: "4px 0",
+                        borderBottom: "1px dashed #E5DEC9",
+                      }}
+                    >
+                      <span>
+                        {it.qty ?? it.quantity ?? 1}x {it.name || it.title}
+                      </span>
+                      <span style={{ fontWeight: 800 }}>
+                        Rp{" "}
+                        {(
+                          Number(it.price ?? 0) *
+                          Number(it.qty ?? it.quantity ?? 1)
+                        ).toLocaleString("id-ID")}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <div>Paket Soto Banjar</div>
+                )}
+
+                <div
+                  style={{
+                    marginTop: "8px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: "12px",
+                    color: "#6D4C30",
+                  }}
+                >
+                  <span>
+                    Ongkir (
+                    {selectedOrder.shippingService ||
+                      selectedOrder.service ||
+                      "Kurir"}
+                    )
+                  </span>
+                  <span>
+                    Rp{" "}
+                    {Number(
+                      selectedOrder.shippingCost ??
+                        selectedOrder.shippingFee ??
+                        0
+                    ).toLocaleString("id-ID")}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    marginTop: "6px",
+                    paddingTop: "6px",
+                    borderTop: "2px solid #E5DEC9",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontWeight: 900,
+                    fontSize: "14px",
+                    color: "#15803D",
+                  }}
+                >
+                  <span>Total Pembayaran</span>
+                  <span>
+                    Rp {getOrderTotal(selectedOrder).toLocaleString("id-ID")}
+                  </span>
+                </div>
+              </div>
+
+              {(selectedOrder.note ||
+                selectedOrder.notes ||
+                selectedOrder.orderNotes) && (
+                <div
+                  style={{
+                    backgroundColor: "#FFFBEB",
+                    padding: "10px 14px",
+                    borderRadius: "10px",
+                    border: "1px solid #FDE68A",
+                    fontSize: "12px",
+                    color: "#92400E",
+                  }}
+                >
+                  <strong>Catatan Pesanan:</strong>{" "}
+                  {selectedOrder.note ||
+                    selectedOrder.notes ||
+                    selectedOrder.orderNotes}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setSelectedOrder(null)}
+                style={{
+                  width: "100%",
+                  padding: "11px",
+                  borderRadius: "10px",
+                  border: "none",
+                  backgroundColor: "#2A1A11",
+                  color: "#EFE3C8",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                Tutup Detail
+              </button>
+            </div>
           </div>
         </div>
       )}
