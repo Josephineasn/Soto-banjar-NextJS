@@ -17,8 +17,10 @@ interface OrderItemDetail {
 }
 
 interface OrderRecord {
-  id: number | string;
+  id?: number | string;
+  orderNumber?: string;
   orderCode?: string;
+  accountName?: string;
   customerName?: string;
   recipientName?: string;
   customerEmail?: string;
@@ -27,20 +29,30 @@ interface OrderRecord {
   paymentMethod?: string;
   vaNumber?: string;
   virtualAccount?: string;
+  area?: string;
   deliveryArea?: string;
+  service?: string;
   shippingService?: string;
   courier?: string;
+  serviceFee?: number;
+  thermalBagCost?: number;
+  useThermalBag?: boolean;
   thermalBag?: boolean | string;
   address?: string;
   fullAddress?: string;
+  addressBenchmark?: string;
   benchmark?: string;
+  landmark?: string;
   patokan?: string;
+  orderNotes?: string;
   note?: string;
   notes?: string;
   shippingFee?: number;
+  shippingCost?: number;
   deliveryFee?: number;
   discount?: number;
   totalPrice?: number;
+  totalAmount?: number;
   total?: number;
   createdAt?: string;
   date?: string;
@@ -56,7 +68,7 @@ interface OrderHistoryModalProps {
 type OrderStatusTab = "SEMUA" | "PENDING" | "DIPROSES" | "DIKIRIM" | "SELESAI";
 
 function formatOrderDate(raw?: string): string {
-  if (!raw) return "15 Nov 2026, 01.28";
+  if (!raw) return "Baru saja";
   const d = new Date(raw);
   if (isNaN(d.getTime())) return raw;
   const datePart = d.toLocaleDateString("id-ID", {
@@ -73,6 +85,61 @@ function formatOrderDate(raw?: string): string {
   return `${datePart}, ${timePart}`;
 }
 
+function normalizeId(ord: OrderRecord): string {
+  const raw = String(ord.orderNumber || ord.orderCode || ord.id || "");
+  return raw.replace(/^#/, "").trim().toUpperCase();
+}
+
+function isOrderOwnedByCurrentUser(
+  ord: OrderRecord,
+  uNameLower: string,
+  uEmailLower: string
+): boolean {
+  if (!uNameLower && !uEmailLower) return false;
+
+  const rawNotes = String(ord.orderNotes || ord.note || ord.notes || "");
+  const userTagMatch = rawNotes.match(/\[USER:\s*([^\]]+)\]/i);
+  const emailTagMatch = rawNotes.match(/\[EMAIL:\s*([^\]]+)\]/i);
+
+  const ordAccountName = String(ord.accountName || userTagMatch?.[1] || "")
+    .trim()
+    .toLowerCase();
+  const ordEmail = String(
+    ord.customerEmail || ord.userEmail || emailTagMatch?.[1] || ""
+  )
+    .trim()
+    .toLowerCase();
+  const ordCustomerName = String(ord.customerName || ord.recipientName || "")
+    .trim()
+    .toLowerCase();
+
+  // 1. Jika ada tag/properti accountName, cocokkan secara ketat dengan nama akun yang sedang login
+  if (ordAccountName) {
+    if (uNameLower && ordAccountName === uNameLower) return true;
+    if (uEmailLower && ordAccountName === uEmailLower.split("@")[0]) return true;
+    return false;
+  }
+
+  // 2. Jika ada email di pesanan, cocokkan secara ketat dengan email akun yang sedang login
+  if (ordEmail && uEmailLower) {
+    return ordEmail === uEmailLower;
+  }
+
+  // 3. Untuk pesanan yang tidak memiliki tag [USER:...], cocokkan dengan nama penerima
+  if (uNameLower && ordCustomerName) {
+    if (ordCustomerName === uNameLower) return true;
+    // Jika username akun diawali dengan nama penerima (contoh: akun "gadinghol", penerima "gading")
+    if (
+      ordCustomerName.length >= 4 &&
+      uNameLower.startsWith(ordCustomerName)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export default function OrderHistoryModal({
   isOpen,
   onClose,
@@ -82,55 +149,116 @@ export default function OrderHistoryModal({
   const [loading, setLoading] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<OrderStatusTab>("SEMUA");
   const [copiedId, setCopiedId] = useState<string | number | null>(null);
+  const [syncTick, setSyncTick] = useState<number>(0);
+
+  // Gunakan langsung currentUser dari prop (jangan pakai key localStorage lama yang nyangkut)
+  const activeUserName = (currentUser?.name || "").trim();
+  const activeUserEmail = (currentUser?.email || "").trim().toLowerCase();
+
+  useEffect(() => {
+    const triggerReload = () => setSyncTick((prev) => prev + 1);
+    window.addEventListener("ordersUpdated", triggerReload);
+    window.addEventListener("storage", triggerReload);
+    return () => {
+      window.removeEventListener("ordersUpdated", triggerReload);
+      window.removeEventListener("storage", triggerReload);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
 
+    let isCancelled = false;
+
     async function fetchOrders() {
       setLoading(true);
       try {
-        const res = await fetch("/api/orders", { cache: "no-store" });
-        if (res.ok) {
-          const data: unknown = await res.json();
-          const list: OrderRecord[] = Array.isArray(data)
-            ? (data as OrderRecord[])
-            : Array.isArray((data as { orders?: OrderRecord[] })?.orders)
-            ? (data as { orders: OrderRecord[] }).orders
-            : [];
+        const uNameLower = activeUserName.toLowerCase();
+        const uEmailLower = activeUserEmail.toLowerCase();
 
-          // Filter hanya pesanan milik user yang sedang login (dan sembunyikan yang berstatus DIBATALKAN)
-          const userFiltered = list.filter((ord) => {
-            const st = String(ord.status || "PENDING").toUpperCase();
-            if (st === "DIBATALKAN" || st === "CANCELLED") return false;
+        // Jika user sudah logout / belum login, wajib kosongkan state orders
+        if (!uNameLower && !uEmailLower) {
+          if (!isCancelled) {
+            setOrders([]);
+            setLoading(false);
+          }
+          return;
+        }
 
-            if (!currentUser) return true;
-            const uName = (currentUser.name || "").trim().toLowerCase();
-            const uEmail = (currentUser.email || "").trim().toLowerCase();
-            const oName = String(
-              ord.customerName || ord.recipientName || ""
-            )
-              .trim()
-              .toLowerCase();
-            const oEmail = String(ord.customerEmail || ord.userEmail || "")
-              .trim()
-              .toLowerCase();
+        // 1. Ambil dari API Database (/api/orders)
+        let dbList: OrderRecord[] = [];
+        try {
+          const res = await fetch("/api/orders", { cache: "no-store" });
+          if (res.ok) {
+            const data: unknown = await res.json();
+            dbList = Array.isArray(data)
+              ? (data as OrderRecord[])
+              : Array.isArray((data as { orders?: OrderRecord[] })?.orders)
+              ? (data as { orders: OrderRecord[] }).orders
+              : [];
+          }
+        } catch {
+          // Lanjut ke fallback lokal jika API gagal
+        }
 
-            if (uEmail && oEmail && uEmail === oEmail) return true;
-            if (uName && oName && oName === uName) return true;
-            return true;
-          });
+        // 2. Ambil juga dari localStorage "soto_complete_orders" (yang disimpan oleh CartDrawer)
+        let localList: OrderRecord[] = [];
+        if (typeof window !== "undefined") {
+          try {
+            const rawLocal = window.localStorage.getItem("soto_complete_orders");
+            if (rawLocal) {
+              const parsed = JSON.parse(rawLocal) as OrderRecord[];
+              if (Array.isArray(parsed)) {
+                localList = parsed;
+              }
+            }
+          } catch {
+            // abaikan
+          }
+        }
 
+        // 3. Gabungkan (prioritaskan status terbaru dari Database Prisma jika ID sama)
+        const mergedMap = new Map<string, OrderRecord>();
+
+        for (const item of dbList) {
+          const key = normalizeId(item);
+          if (key) mergedMap.set(key, item);
+        }
+
+        for (const localItem of localList) {
+          const key = normalizeId(localItem);
+          if (key && !mergedMap.has(key)) {
+            mergedMap.set(key, localItem);
+          }
+        }
+
+        const combinedList = Array.from(mergedMap.values());
+
+        // 4. Filter hanya milik akun yang sedang login saat ini
+        const userFiltered = combinedList.filter((ord) => {
+          const st = String(ord.status || "PENDING").toUpperCase();
+          if (st === "DIBATALKAN" || st === "CANCELLED") return false;
+          return isOrderOwnedByCurrentUser(ord, uNameLower, uEmailLower);
+        });
+
+        if (!isCancelled) {
           setOrders(userFiltered);
         }
       } catch (err) {
         console.error("Gagal memuat riwayat pesanan:", err);
       } finally {
-        setLoading(false);
+        if (!isCancelled) {
+          setLoading(false);
+        }
       }
     }
 
     void fetchOrders();
-  }, [isOpen, currentUser]);
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen, activeUserName, activeUserEmail, syncTick]);
 
   const counts = useMemo(() => {
     const c = {
@@ -143,9 +271,16 @@ export default function OrderHistoryModal({
     orders.forEach((o) => {
       const s = String(o.status || "PENDING").toUpperCase();
       if (s === "PENDING") c.PENDING += 1;
-      else if (s === "DIPROSES" || s === "PROCESSED") c.DIPROSES += 1;
-      else if (s === "DIKIRIM" || s === "SHIPPED") c.DIKIRIM += 1;
-      else if (s === "SELESAI" || s === "COMPLETED" || s === "DONE")
+      else if (s === "DIPROSES" || s === "PROSES" || s === "PROCESSED")
+        c.DIPROSES += 1;
+      else if (s === "DIKIRIM" || s === "DIANTAR" || s === "SHIPPED")
+        c.DIKIRIM += 1;
+      else if (
+        s === "SELESAI" ||
+        s === "COMPLETED" ||
+        s === "DONE" ||
+        s === "TERKIRIM"
+      )
         c.SELESAI += 1;
     });
     return c;
@@ -156,10 +291,17 @@ export default function OrderHistoryModal({
     return orders.filter((o) => {
       const s = String(o.status || "PENDING").toUpperCase();
       if (activeTab === "PENDING") return s === "PENDING";
-      if (activeTab === "DIPROSES") return s === "DIPROSES" || s === "PROCESSED";
-      if (activeTab === "DIKIRIM") return s === "DIKIRIM" || s === "SHIPPED";
+      if (activeTab === "DIPROSES")
+        return s === "DIPROSES" || s === "PROSES" || s === "PROCESSED";
+      if (activeTab === "DIKIRIM")
+        return s === "DIKIRIM" || s === "DIANTAR" || s === "SHIPPED";
       if (activeTab === "SELESAI")
-        return s === "SELESAI" || s === "COMPLETED" || s === "DONE";
+        return (
+          s === "SELESAI" ||
+          s === "COMPLETED" ||
+          s === "DONE" ||
+          s === "TERKIRIM"
+        );
       return true;
     });
   }, [orders, activeTab]);
@@ -241,7 +383,7 @@ export default function OrderHistoryModal({
               >
                 Akun Login:{" "}
                 <strong style={{ color: "#2A1A11" }}>
-                  {currentUser?.name || "Pelanggan"}
+                  {activeUserName || activeUserEmail || "Belum Login"}
                 </strong>{" "}
                 •{" "}
                 <span style={{ color: "#166534", fontWeight: 700 }}>
@@ -269,7 +411,7 @@ export default function OrderHistoryModal({
             </button>
           </div>
 
-          {/* 5 Tab Status Tanpa "Dibatalkan" & Tanpa Scrollbar */}
+          {/* 5 Tab Status */}
           <div
             style={{
               display: "flex",
@@ -358,26 +500,52 @@ export default function OrderHistoryModal({
               Belum ada riwayat pesanan pada status ini.
             </div>
           ) : (
-            filteredOrders.map((ord) => {
+            filteredOrders.map((ord, index) => {
               const statusUpper = String(ord.status || "PENDING").toUpperCase();
               const isSelesai =
-                statusUpper === "SELESAI" || statusUpper === "COMPLETED";
-              const codeText = ord.orderCode
-                ? String(ord.orderCode)
-                : String(ord.id).startsWith("#")
-                ? String(ord.id)
-                : `#SBN-${ord.id}`;
+                statusUpper === "SELESAI" ||
+                statusUpper === "COMPLETED" ||
+                statusUpper === "TERKIRIM";
+
+              const rawId = String(
+                ord.orderCode || ord.orderNumber || ord.id || `SBN-${index}`
+              );
+              const codeText = rawId.startsWith("#") ? rawId : `#${rawId}`;
 
               const vaNum =
                 ord.vaNumber || ord.virtualAccount || "807778778659726";
               const shippingCost = Number(
-                ord.shippingFee ?? ord.deliveryFee ?? 30000
+                ord.shippingFee ?? ord.shippingCost ?? ord.deliveryFee ?? 0
               );
-              const totalCost = Number(ord.totalPrice ?? ord.total ?? 50000);
+              const totalCost = Number(
+                ord.totalPrice ?? ord.totalAmount ?? ord.total ?? 0
+              );
+
+              const cleanNote = String(
+                ord.note || ord.notes || ord.orderNotes || ""
+              )
+                .replace(/\[VA:[^\]]*\]/gi, "")
+                .replace(/\[HP:[^\]]*\]/gi, "")
+                .replace(/\[EMAIL:[^\]]*\]/gi, "")
+                .replace(/\[USER:[^\]]*\]/gi, "")
+                .trim();
+
+              const patokanText =
+                ord.benchmark ||
+                ord.patokan ||
+                ord.landmark ||
+                ord.addressBenchmark ||
+                "";
+
+              const hasThermal =
+                ord.useThermalBag === true ||
+                ord.thermalBag === true ||
+                ord.thermalBag === "Ya" ||
+                Number(ord.serviceFee ?? ord.thermalBagCost ?? 0) > 0;
 
               return (
                 <div
-                  key={ord.id}
+                  key={codeText}
                   style={{
                     backgroundColor: "#FFFFFF",
                     borderRadius: "18px",
@@ -471,7 +639,7 @@ export default function OrderHistoryModal({
                       type="button"
                       onClick={() => {
                         void navigator.clipboard.writeText(String(vaNum));
-                        setCopiedId(ord.id);
+                        setCopiedId(codeText);
                         setTimeout(() => setCopiedId(null), 2000);
                       }}
                       style={{
@@ -485,7 +653,7 @@ export default function OrderHistoryModal({
                         cursor: "pointer",
                       }}
                     >
-                      {copiedId === ord.id ? "Tersalin ✓" : "Salin VA"}
+                      {copiedId === codeText ? "Tersalin ✓" : "Salin VA"}
                     </button>
                   </div>
 
@@ -506,7 +674,7 @@ export default function OrderHistoryModal({
                       <div style={{ fontWeight: 800, color: "#2A1A11" }}>
                         {ord.recipientName ||
                           ord.customerName ||
-                          currentUser?.name ||
+                          activeUserName ||
                           "Pelanggan"}
                       </div>
                     </div>
@@ -516,8 +684,12 @@ export default function OrderHistoryModal({
                         Wilayah &amp; Layanan:
                       </div>
                       <div style={{ fontWeight: 800, color: "#2A1A11" }}>
-                        {ord.deliveryArea || "Jakarta"} (
-                        {ord.shippingService || ord.courier || "Kurir Instant"})
+                        {ord.area || ord.deliveryArea || "Jakarta"} (
+                        {ord.service ||
+                          ord.shippingService ||
+                          ord.courier ||
+                          "Kurir Instant"}
+                        )
                       </div>
                     </div>
 
@@ -526,9 +698,7 @@ export default function OrderHistoryModal({
                         Thermal Bag:
                       </div>
                       <div style={{ fontWeight: 800, color: "#2A1A11" }}>
-                        {ord.thermalBag === true || ord.thermalBag === "Ya"
-                          ? "Ya"
-                          : "Tidak"}
+                        {hasThermal ? "Ya" : "Tidak"}
                       </div>
                     </div>
 
@@ -541,18 +711,18 @@ export default function OrderHistoryModal({
                       </div>
                     </div>
 
-                    {(ord.benchmark || ord.patokan) && (
+                    {patokanText && (
                       <div>
                         <div style={{ color: "#94A3B8", fontSize: "11px" }}>
                           Patokan:
                         </div>
                         <div style={{ fontWeight: 800, color: "#2A1A11" }}>
-                          {ord.benchmark || ord.patokan}
+                          {patokanText}
                         </div>
                       </div>
                     )}
 
-                    {(ord.note || ord.notes) && (
+                    {cleanNote && (
                       <div>
                         <div style={{ color: "#94A3B8", fontSize: "11px" }}>
                           Catatan Pengiriman:
@@ -564,7 +734,7 @@ export default function OrderHistoryModal({
                             color: "#432818",
                           }}
                         >
-                          &quot;{ord.note || ord.notes}&quot;
+                          &quot;{cleanNote}&quot;
                         </div>
                       </div>
                     )}
@@ -594,7 +764,7 @@ export default function OrderHistoryModal({
                       ord.items.map((it, idx) => {
                         const itemName =
                           it.name || it.menuName || it.menu?.name || "Menu";
-                        const qty = Number(it.quantity ?? it.qty ?? 1);
+                        const qty = Number(it.qty ?? it.quantity ?? 1);
                         const itemPrice =
                           Number(it.price ?? it.menu?.price ?? 0) * qty;
 

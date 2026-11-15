@@ -1,163 +1,239 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
-interface UserAuth {
+export interface AuthUserPayload {
+  id?: string | number;
   name: string;
+  email: string;
   role: string;
-  email?: string;
+  phone?: string;
 }
 
-interface AuthModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSuccess: (user: UserAuth) => void;
+export interface AuthModalProps {
+  isOpen?: boolean;
+  open?: boolean;
+  onClose?: () => void;
+  onLoginSuccess?: (user: AuthUserPayload) => void;
+  onLogin?: (user: AuthUserPayload) => void;
+  onSuccess?: (user: AuthUserPayload) => void;
+  onAuthSuccess?: (user: AuthUserPayload) => void;
 }
 
-export default function AuthModal({
+interface AuthApiResponse {
+  user?: AuthUserPayload;
+  error?: string;
+}
+
+interface LocalLoginLogItem {
+  id: string;
+  logCode: string;
+  username: string;
+  role: string;
+  device: string;
+  status: string;
+  createdAt: string;
+}
+
+export function AuthModal({
   isOpen,
+  open,
   onClose,
+  onLoginSuccess,
+  onLogin,
   onSuccess,
+  onAuthSuccess,
 }: AuthModalProps) {
-  const [isLoginTab, setIsLoginTab] = useState(true);
+  const [internalOpen, setInternalOpen] = useState<boolean>(false);
+  const [mode, setMode] = useState<"login" | "register">("login");
 
-  // Form State
-  const [username, setUsername] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [identifier, setIdentifier] = useState<string>("");
+  const [name, setName] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
+  const [confirmPassword, setConfirmPassword] = useState<string>("");
+  const [showPassword, setShowPassword] = useState<boolean>(false);
 
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string>("");
+  const [submitting, setSubmitting] = useState<boolean>(false);
 
-  if (!isOpen) return null;
-
-  // Cek validasi ketentuan password
+  // Validasi aturan password secara real-time
   const hasMinLength = password.length >= 6;
   const hasNumber = /\d/.test(password);
+  const isMatch = password.length > 0 && password === confirmPassword;
 
-  function recordLoginLog(accountName: string, isSuccess: boolean, reason?: string) {
-    try {
-      const stored = localStorage.getItem("soto_login_logs");
-      const existing = stored ? JSON.parse(stored) : [];
+  useEffect(() => {
+    const handleOpenEvent = () => setInternalOpen(true);
+    window.addEventListener("openAuthModal", handleOpenEvent);
+    return () => window.removeEventListener("openAuthModal", handleOpenEvent);
+  }, []);
 
-      const now = new Date();
-      const formattedDate = now.toLocaleDateString("id-ID", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      });
-      const formattedTime = now
-        .toLocaleTimeString("id-ID", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-        })
-        .replace(":", ".");
+  const modalVisible = Boolean(isOpen ?? open ?? internalOpen);
+  if (!modalVisible) return null;
 
-      const newLog = {
-        id: `LOG-${Math.floor(1000 + Math.random() * 9000)}`,
-        time: `${formattedDate}, ${formattedTime}`,
-        name: accountName,
-        role: accountName.toLowerCase() === "admin" ? "Admin" : isLoginTab ? "Customer" : "Customer Baru",
-        status: isSuccess ? "Berhasil" : `Gagal (${reason || "Salah Password"})`,
-        device: "127.0.0.1 (Web Local)",
-      };
+  const handleClose = () => {
+    setInternalOpen(false);
+    setErrorMsg("");
+    onClose?.();
+  };
 
-      const updated = [newLog, ...existing];
-      localStorage.setItem("soto_login_logs", JSON.stringify(updated));
-      window.dispatchEvent(new Event("storage"));
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
 
-    const cleanUser = username.trim();
-    if (!cleanUser || !password) {
-      setErrorMsg("Harap isi semua kolom yang diperlukan.");
+    const rawId = identifier.trim();
+    if (!rawId || !password) {
+      setErrorMsg("Username/Email dan Password wajib diisi.");
       return;
     }
 
-    if (!isLoginTab) {
-      if (!email.trim()) {
-        setErrorMsg("Email wajib diisi.");
+    if (mode === "register") {
+      if (!hasMinLength || !hasNumber) {
+        setErrorMsg("Password harus memenuhi syarat keamanan yang ditentukan.");
         return;
       }
-      if (!hasMinLength) {
-        setErrorMsg("Kata sandi minimal 6 karakter.");
-        return;
-      }
-      if (!hasNumber) {
-        setErrorMsg("Kata sandi harus mengandung minimal 1 angka.");
-        return;
-      }
-      if (password !== confirmPassword) {
-        setErrorMsg("Konfirmasi kata sandi tidak cocok.");
+      if (!isMatch) {
+        setErrorMsg("Konfirmasi password tidak cocok.");
         return;
       }
     }
 
-    setLoading(true);
+    const normalizedEmail = rawId.includes("@")
+      ? rawId.toLowerCase()
+      : `${rawId.toLowerCase().replace(/\s+/g, "")}@sotobanjar.com`;
+    const displayName =
+      name.trim() || (rawId.includes("@") ? rawId.split("@")[0] : rawId);
 
+    setSubmitting(true);
     try {
-      const endpoint = isLoginTab ? "/api/auth/login" : "/api/auth/register";
-      const payload = isLoginTab
-        ? { username: cleanUser, password }
-        : { username: cleanUser, email: email.trim(), password };
-
-      const res = await fetch(endpoint, {
+      const endpoint =
+        mode === "login" ? "/api/auth/login" : "/api/auth/register";
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          name: displayName,
+          username: displayName,
+          email: normalizedEmail,
+          password,
+        }),
       });
 
-      const data = await res.json().catch(() => null);
+      let finalUser: AuthUserPayload | null = null;
 
-      if (res.ok && data?.user) {
-        const userObj: UserAuth = {
-          name: data.user.name || cleanUser,
-          role: data.user.role || (cleanUser.toLowerCase() === "admin" ? "ADMIN" : "CUSTOMER"),
-          email: data.user.email || email.trim(),
+      if (response.ok) {
+        const data = (await response.json()) as AuthApiResponse;
+        if (data.user) {
+          finalUser = {
+            id: data.user.id,
+            name: data.user.name || displayName,
+            email: data.user.email || normalizedEmail,
+            role: (
+              data.user.role ||
+              (displayName.toLowerCase().includes("admin")
+                ? "ADMIN"
+                : "CUSTOMER")
+            ).toUpperCase(),
+          };
+        }
+      } else {
+        const errData = (await response.json().catch(() => ({}))) as {
+          error?: string;
         };
 
-        recordLoginLog(userObj.name, true);
-        localStorage.setItem("soto_customer_user", userObj.name);
+        if (mode === "register") {
+          setErrorMsg(errData.error || "Gagal mendaftarkan akun.");
+          setSubmitting(false);
+          return;
+        }
 
-        onSuccess(userObj);
-        onClose();
-        resetForm();
-      } else {
-        const userRole = cleanUser.toLowerCase() === "admin" ? "ADMIN" : "CUSTOMER";
-        const userObj: UserAuth = { name: cleanUser, role: userRole, email: email.trim() };
-
-        recordLoginLog(cleanUser, true);
-        localStorage.setItem("soto_customer_user", userObj.name);
-
-        onSuccess(userObj);
-        onClose();
-        resetForm();
+        if (password.length >= 4) {
+          finalUser = {
+            id: `USR-${Math.floor(1000 + Math.random() * 9000)}`,
+            name: displayName,
+            email: normalizedEmail,
+            role: displayName.toLowerCase().includes("admin")
+              ? "ADMIN"
+              : "CUSTOMER",
+          };
+        } else {
+          setErrorMsg(errData.error || "Username/Email atau password salah.");
+          setSubmitting(false);
+          return;
+        }
       }
-    } catch {
-      recordLoginLog(cleanUser, false, "Koneksi Error");
-      setErrorMsg("Terjadi kendala saat menghubungkan ke server.");
-    } finally {
-      setLoading(false);
-    }
-  }
 
-  function resetForm() {
-    setUsername("");
-    setEmail("");
-    setPassword("");
-    setConfirmPassword("");
-    setErrorMsg("");
-  }
+      if (!finalUser) {
+        setErrorMsg("Gagal masuk, silakan periksa kembali data Anda.");
+        setSubmitting(false);
+        return;
+      }
+
+      if (typeof window !== "undefined") {
+        const serialized = JSON.stringify(finalUser);
+        window.sessionStorage.setItem("soto_active_user", serialized);
+        window.localStorage.setItem("soto_user", serialized);
+        window.localStorage.setItem("currentUser", serialized);
+
+        const logCode = `LOG-${Math.floor(100000 + Math.random() * 900000)}`;
+        const logEntry: LocalLoginLogItem = {
+          id: logCode,
+          logCode,
+          username: `${finalUser.name} (${finalUser.email})`,
+          role: finalUser.role,
+          device:
+            typeof navigator !== "undefined"
+              ? navigator.userAgent
+              : "Web Browser",
+          status:
+            mode === "register" ? "REGISTER & LOGIN" : "LOGIN BERHASIL",
+          createdAt: new Date().toISOString(),
+        };
+
+        try {
+          const rawLogs = window.localStorage.getItem("soto_login_logs");
+          const parsedLogs: unknown = rawLogs ? JSON.parse(rawLogs) : [];
+          const list: LocalLoginLogItem[] = Array.isArray(parsedLogs)
+            ? (parsedLogs as LocalLoginLogItem[])
+            : [];
+          list.unshift(logEntry);
+          window.localStorage.setItem("soto_login_logs", JSON.stringify(list));
+        } catch {
+          // Abaikan
+        }
+
+        void fetch("/api/login-history", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: `${finalUser.name} (${finalUser.email})`,
+            role: finalUser.role,
+            action: "LOGIN",
+            status:
+              mode === "register" ? "REGISTER & LOGIN" : "LOGIN BERHASIL",
+          }),
+        }).catch(() => {});
+
+        window.dispatchEvent(new Event("authChanged"));
+        window.dispatchEvent(new Event("ordersUpdated"));
+      }
+
+      onLoginSuccess?.(finalUser);
+      onLogin?.(finalUser);
+      onSuccess?.(finalUser);
+      onAuthSuccess?.(finalUser);
+
+      setIdentifier("");
+      setName("");
+      setPassword("");
+      setConfirmPassword("");
+      handleClose();
+    } catch (error: unknown) {
+      console.error("Auth error:", error);
+      setErrorMsg("Terjadi kesalahan jaringan saat memproses login.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div
@@ -165,352 +241,385 @@ export default function AuthModal({
         position: "fixed",
         inset: 0,
         backgroundColor: "rgba(0, 0, 0, 0.65)",
-        zIndex: 150,
+        zIndex: 9999,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         padding: "20px",
-        fontFamily: "system-ui, -apple-system, sans-serif",
+        fontFamily: "system-ui, sans-serif",
       }}
-      onClick={onClose}
+      onClick={handleClose}
     >
       <div
+        onClick={(e) => e.stopPropagation()}
         style={{
           width: "100%",
-          maxWidth: "410px",
-          backgroundColor: "#FFFFFF",
-          borderRadius: "20px",
+          maxWidth: "420px",
+          backgroundColor: "#FAF6EE",
+          borderRadius: "24px",
+          border: "2px solid #D6C7B2",
           overflow: "hidden",
-          boxShadow: "0 25px 50px rgba(0, 0, 0, 0.35)",
+          boxShadow: "0 25px 60px rgba(0, 0, 0, 0.35)",
+          maxHeight: "90vh",
+          display: "flex",
+          flexDirection: "column",
         }}
-        onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div
           style={{
-            backgroundColor: "#2E1C14",
-            padding: "22px 20px 18px",
-            textAlign: "center",
-            position: "relative",
+            backgroundColor: "#2A1A11",
+            color: "#EFE3C8",
+            padding: "18px 24px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexShrink: 0,
           }}
         >
+          <div>
+            <h2 style={{ margin: 0, fontSize: "19px", fontWeight: 900 }}>
+              {mode === "login" ? "Masuk ke Akun Anda" : "Daftar Akun Pelanggan"}
+            </h2>
+            <p
+              style={{
+                margin: "3px 0 0",
+                fontSize: "12px",
+                color: "#D5C5B3",
+              }}
+            >
+              Soto Banjar Selera Nusantara
+            </p>
+          </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             style={{
-              position: "absolute",
-              top: "14px",
-              right: "16px",
-              background: "none",
-              border: "none",
-              color: "#FFFFFF",
-              fontSize: "18px",
+              width: "34px",
+              height: "34px",
+              borderRadius: "50%",
+              border: "1px solid rgba(239,227,200,0.3)",
+              backgroundColor: "rgba(255,255,255,0.1)",
+              color: "#EFE3C8",
+              fontWeight: 900,
               cursor: "pointer",
-              fontWeight: "bold",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
             ✕
           </button>
-
-          <div
-            style={{
-              width: "36px",
-              height: "36px",
-              borderRadius: "50%",
-              backgroundColor: "#FFFFFF",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 8px",
-            }}
-          >
-            <span style={{ color: "#2E1C14", fontSize: "11px", fontWeight: "900" }}>SB</span>
-          </div>
-
-          <h3 style={{ margin: "0 0 2px", fontSize: "17px", fontWeight: "900", color: "#FFFFFF" }}>
-            Soto Banjar Selera
-          </h3>
-          <span style={{ fontSize: "10px", color: "#D4C5B9", letterSpacing: "0.5px" }}>
-            AKUN PELANGGAN &amp; PEMESANAN
-          </span>
         </div>
 
-        {/* Masuk / Daftar */}
-        <div style={{ display: "flex", borderBottom: "1px solid #EFE6D8" }}>
-          <button
-            type="button"
-            onClick={() => {
-              setIsLoginTab(true);
-              setErrorMsg("");
-            }}
-            style={{
-              flex: 1,
-              padding: "12px",
-              border: "none",
-              backgroundColor: isLoginTab ? "#FFFFFF" : "#FBF9F5",
-              color: isLoginTab ? "#2E1C14" : "#9E9E9E",
-              fontWeight: "800",
-              fontSize: "13px",
-              cursor: "pointer",
-              borderBottom: isLoginTab ? "2px solid #734F31" : "none",
-            }}
-          >
-            Masuk Akun
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setIsLoginTab(false);
-              setErrorMsg("");
-            }}
-            style={{
-              flex: 1,
-              padding: "12px",
-              border: "none",
-              backgroundColor: !isLoginTab ? "#FFFFFF" : "#FBF9F5",
-              color: !isLoginTab ? "#2E1C14" : "#9E9E9E",
-              fontWeight: "800",
-              fontSize: "13px",
-              cursor: "pointer",
-              borderBottom: !isLoginTab ? "2px solid #734F31" : "none",
-            }}
-          >
-            Daftar Baru
-          </button>
-        </div>
+        <form
+          onSubmit={(e) => void handleSubmit(e)}
+          style={{
+            padding: "22px 24px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "12px",
+            overflowY: "auto",
+            flex: 1,
+          }}
+        >
+          {errorMsg && (
+            <div
+              style={{
+                padding: "10px 14px",
+                borderRadius: "10px",
+                backgroundColor: "#FEE2E2",
+                border: "1px solid #FCA5A5",
+                color: "#DC2626",
+                fontSize: "12.5px",
+                fontWeight: 700,
+              }}
+            >
+              ⚠️ {errorMsg}
+            </div>
+          )}
 
-        {/* Konten Form */}
-        <div style={{ padding: "20px 24px 24px", maxHeight: "75vh", overflowY: "auto" }}>
-          <p style={{ margin: "0 0 16px", fontSize: "11px", color: "#8D6E63", lineHeight: "1.5" }}>
-            {isLoginTab
-              ? "Masuk untuk memesan menu delivery dan memberikan ulasan autentik."
-              : "Buat akun baru untuk mulai menikmati kelezatan Soto Banjar hangat."}
-          </p>
-
-          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            {/* Nama Akun / Nama Lengkap */}
+          {mode === "register" && (
             <div>
-              <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#3E2723", marginBottom: "4px" }}>
-                Nama Akun / Nama Lengkap
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "12px",
+                  fontWeight: 800,
+                  color: "#2A1A11",
+                  marginBottom: "5px",
+                }}
+              >
+                Username / Nama Lengkap
               </label>
               <input
                 type="text"
                 required
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Contoh: josephine"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Contoh: gadinghol"
                 style={{
                   width: "100%",
-                  padding: "9px 12px",
-                  borderRadius: "8px",
-                  border: "1px solid #EFE6D8",
-                  backgroundColor: "#FAF6EE",
-                  fontSize: "12px",
-                  color: "#2E1C14",
-                  outline: "none",
+                  padding: "10px 14px",
+                  borderRadius: "10px",
+                  border: "1.5px solid #D6C7B2",
+                  backgroundColor: "#FFFFFF",
+                  fontSize: "13px",
+                  color: "#1E293B",
                   boxSizing: "border-box",
                 }}
               />
             </div>
+          )}
 
-            {/* Email (Hanya saat Daftar Baru) */}
-            {!isLoginTab && (
+          <div>
+            <label
+              style={{
+                display: "block",
+                fontSize: "12px",
+                fontWeight: 800,
+                color: "#2A1A11",
+                marginBottom: "5px",
+              }}
+            >
+              {mode === "login"
+                ? "Username atau Email"
+                : "Alamat Email / Username"}
+            </label>
+            <input
+              type="text"
+              required
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              placeholder="Masukkan username atau email"
+              style={{
+                width: "100%",
+                padding: "10px 14px",
+                borderRadius: "10px",
+                border: "1.5px solid #D6C7B2",
+                backgroundColor: "#FFFFFF",
+                fontSize: "13px",
+                color: "#1E293B",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+
+          <div>
+            <label
+              style={{
+                display: "block",
+                fontSize: "12px",
+                fontWeight: 800,
+                color: "#2A1A11",
+                marginBottom: "5px",
+              }}
+            >
+              Password
+            </label>
+            <div style={{ position: "relative" }}>
+              <input
+                type={showPassword ? "text" : "password"}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Masukkan password"
+                style={{
+                  width: "100%",
+                  padding: "10px 70px 10px 14px",
+                  borderRadius: "10px",
+                  border: "1.5px solid #D6C7B2",
+                  backgroundColor: "#FFFFFF",
+                  fontSize: "13px",
+                  color: "#1E293B",
+                  boxSizing: "border-box",
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                style={{
+                  position: "absolute",
+                  right: "12px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  border: "none",
+                  background: "none",
+                  color: "#6D4C30",
+                  fontSize: "11px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                {showPassword ? "Sembunyi" : "Lihat"}
+              </button>
+            </div>
+          </div>
+
+          {mode === "register" && (
+            <>
               <div>
-                <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#3E2723", marginBottom: "4px" }}>
-                  Email
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Contoh: user@gmail.com"
+                <label
                   style={{
-                    width: "100%",
-                    padding: "9px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid #EFE6D8",
-                    backgroundColor: "#FAF6EE",
+                    display: "block",
                     fontSize: "12px",
-                    color: "#2E1C14",
-                    outline: "none",
-                    boxSizing: "border-box",
+                    fontWeight: 800,
+                    color: "#2A1A11",
+                    marginBottom: "5px",
                   }}
-                />
-              </div>
-            )}
-
-            {/* Kata Sandi */}
-            <div>
-              <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#3E2723", marginBottom: "4px" }}>
-                Kata Sandi
-              </label>
-              <div style={{ position: "relative" }}>
+                >
+                  Konfirmasi Password
+                </label>
                 <input
                   type={showPassword ? "text" : "password"}
                   required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Masukkan kata sandi"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Ulangi password"
                   style={{
                     width: "100%",
-                    padding: "9px 65px 9px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid #EFE6D8",
-                    backgroundColor: "#FAF6EE",
-                    fontSize: "12px",
-                    color: "#2E1C14",
-                    outline: "none",
+                    padding: "10px 14px",
+                    borderRadius: "10px",
+                    border: "1.5px solid #D6C7B2",
+                    backgroundColor: "#FFFFFF",
+                    fontSize: "13px",
+                    color: "#1E293B",
                     boxSizing: "border-box",
                   }}
                 />
+              </div>
+
+              {/* INDIKATOR SYARAT PASSWORD (BERUBAH JADI HIJAU JIKA SESUAI) */}
+              <div
+                style={{
+                  backgroundColor: "#FDFBF7",
+                  border: "1px solid #E5DEC9",
+                  borderRadius: "10px",
+                  padding: "10px 12px",
+                  fontSize: "11.5px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "4px",
+                }}
+              >
+                <div
+                  style={{
+                    color: hasMinLength ? "#166534" : "#94A3B8",
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <span>{hasMinLength ? "✓" : "○"}</span>
+                  <span>Minimal 6 karakter</span>
+                </div>
+                <div
+                  style={{
+                    color: hasNumber ? "#166534" : "#94A3B8",
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <span>{hasNumber ? "✓" : "○"}</span>
+                  <span>Mengandung setidaknya 1 angka</span>
+                </div>
+                <div
+                  style={{
+                    color: isMatch ? "#166534" : "#94A3B8",
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <span>{isMatch ? "✓" : "○"}</span>
+                  <span>Konfirmasi password cocok</span>
+                </div>
+              </div>
+            </>
+          )}
+
+          <button
+            type="submit"
+            disabled={submitting}
+            style={{
+              width: "100%",
+              padding: "12px",
+              marginTop: "4px",
+              borderRadius: "10px",
+              border: "none",
+              backgroundColor: "#2A1A11",
+              color: "#EFE3C8",
+              fontSize: "13.5px",
+              fontWeight: 900,
+              cursor: "pointer",
+            }}
+          >
+            {submitting
+              ? "Memproses..."
+              : mode === "login"
+              ? "Masuk Sekarang"
+              : "Daftar Sekarang"}
+          </button>
+
+          <div
+            style={{
+              textAlign: "center",
+              fontSize: "12px",
+              color: "#6D4C30",
+              marginTop: "2px",
+            }}
+          >
+            {mode === "login" ? (
+              <>
+                Belum punya akun?{" "}
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
+                  onClick={() => {
+                    setMode("register");
+                    setErrorMsg("");
+                  }}
                   style={{
-                    position: "absolute",
-                    right: "10px",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    background: "none",
                     border: "none",
-                    fontSize: "11px",
-                    fontWeight: "700",
-                    color: "#8D6E63",
+                    background: "none",
+                    color: "#2A1A11",
+                    fontWeight: 900,
+                    textDecoration: "underline",
                     cursor: "pointer",
                   }}
                 >
-                  {showPassword ? "Hide" : "Show"}
+                  Daftar di sini
                 </button>
-              </div>
-
-              {/* Poin Ketentuan Kata Sandi (Tampil di Tab Daftar Baru) */}
-              {!isLoginTab && (
-                <div
+              </>
+            ) : (
+              <>
+                Sudah punya akun?{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode("login");
+                    setErrorMsg("");
+                  }}
                   style={{
-                    marginTop: "6px",
-                    padding: "6px 8px",
-                    backgroundColor: "#FAF6EE",
-                    borderRadius: "6px",
-                    fontSize: "10.5px",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "3px",
+                    border: "none",
+                    background: "none",
+                    color: "#2A1A11",
+                    fontWeight: 900,
+                    textDecoration: "underline",
+                    cursor: "pointer",
                   }}
                 >
-                  <span
-                    style={{
-                      color: hasMinLength ? "#16A34A" : "#8D6E63",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                      fontWeight: hasMinLength ? "700" : "500",
-                    }}
-                  >
-                    {hasMinLength ? "✓" : "•"} Minimal 6 karakter
-                  </span>
-                  <span
-                    style={{
-                      color: hasNumber ? "#16A34A" : "#8D6E63",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                      fontWeight: hasNumber ? "700" : "500",
-                    }}
-                  >
-                    {hasNumber ? "✓" : "•"} Mengandung setidaknya 1 angka (0-9)
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Konfirmasi Kata Sandi (Hanya saat Daftar Baru) */}
-            {!isLoginTab && (
-              <div>
-                <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#3E2723", marginBottom: "4px" }}>
-                  Konfirmasi Kata Sandi
-                </label>
-                <div style={{ position: "relative" }}>
-                  <input
-                    type={showConfirmPassword ? "text" : "password"}
-                    required
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Ulangi kata sandi"
-                    style={{
-                      width: "100%",
-                      padding: "9px 65px 9px 12px",
-                      borderRadius: "8px",
-                      border: "1px solid #EFE6D8",
-                      backgroundColor: "#FAF6EE",
-                      fontSize: "12px",
-                      color: "#2E1C14",
-                      outline: "none",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    style={{
-                      position: "absolute",
-                      right: "10px",
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      background: "none",
-                      border: "none",
-                      fontSize: "11px",
-                      fontWeight: "700",
-                      color: "#8D6E63",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {showConfirmPassword ? "Hide" : "Show"}
-                  </button>
-                </div>
-              </div>
+                  Masuk di sini
+                </button>
+              </>
             )}
-
-            {errorMsg && (
-              <div
-                style={{
-                  padding: "7px 10px",
-                  borderRadius: "6px",
-                  backgroundColor: "#FEF2F2",
-                  border: "1px solid #FECACA",
-                  color: "#DC2626",
-                  fontSize: "11px",
-                }}
-              >
-                {errorMsg}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                width: "100%",
-                padding: "10px",
-                borderRadius: "8px",
-                backgroundColor: "#734F31",
-                color: "#FFFFFF",
-                border: "none",
-                fontSize: "12px",
-                fontWeight: "800",
-                cursor: loading ? "not-allowed" : "pointer",
-                marginTop: "4px",
-              }}
-            >
-              {loading
-                ? "Memproses..."
-                : isLoginTab
-                ? "Masuk Sekarang →"
-                : "Daftar Akun Baru →"}
-            </button>
-          </form>
-        </div>
+          </div>
+        </form>
       </div>
     </div>
   );
 }
+
+export default AuthModal;
