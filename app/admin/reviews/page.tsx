@@ -2,436 +2,359 @@
 
 import React, { useEffect, useState } from "react";
 
-interface ReviewItem {
-    id: string;
-    name: string;
-    city: string;
-    rating: number;
-    comment: string;
-    reply?: string | null;
-    timeAgo?: string;
-    createdAt?: string;
+interface ReviewRecord {
+  id: number | string;
+  rating: number;
+  comment: string;
+  customerName?: string;
+  name?: string;
+  city?: string;
+  createdAt?: string;
+  adminReply?: string;
+  reply?: string;
+  showOnWebsite?: boolean;
 }
 
-    const defaultSampleReviews: ReviewItem[] = [
-    {
-        id: "sample-1",
-        name: "Marcello Kwandinata",
-        city: "Jakarta Utara",
-        rating: 5,
-        timeAgo: "Hari ini",
-        comment:
-        "Makanan nya enak sekali dan minuman nya juga segar harganya sangat worth it",
-    },
-    {
-        id: "sample-2",
-        name: "Marcello Kwandinata",
-        city: "Jakarta barat",
-        rating: 5,
-        timeAgo: "Hari ini",
-        comment:
-        "Soto nya enak sekali dan dagingnya empuk beserta hidangan penutupnya itu sangat worth it dengan harga segitu",
-    },
-    {
-        id: "sample-3",
-        name: "Josephine Sherly",
-        city: "Jakarta Selatan",
-        rating: 5,
-        timeAgo: "2 hari lalu",
-        comment:
-        "Kuah kaldunya beneran wangi kayu manis dan kapulaga asli Banjar. Pas sampai di rumah masih panas banget dan kuahnya dipisah rapi, ga tumpah sama sekali!",
-        reply:
-        "Terima kasih banyak Kak! Kami selalu memisahkan kuah panas dalam wadah kedap agar rasa rempahnya tetap maksimal.",
-    },
-    {
-        id: "sample-4",
-        name: "Calvin Marcello",
-        city: "Tangerang Kota",
-        rating: 5,
-        timeAgo: "Seminggu lalu",
-        comment:
-        "Porsi ayamnya melimpah, telur bebek rebusnya gurih berpadu pas dengan perkedel kentang. Pengiriman ke Tangerang cepet banget cuma 35 menitan.",
-    },
-    {
-        id: "sample-5",
-        name: "Gading Sihol",
-        city: "Jakarta Utara",
-        rating: 5,
-        timeAgo: "2 minggu lalu",
-        comment:
-        "Rasa autentik nostalgia waktu tugas di Kalsel. Kemasan food grade-nya higienis dan jeruk kuitnya segar banget buat es jeruknya!",
-        reply:
-        "Wah senang bisa mengobati rindu cita rasa Kalimantan Selatan, Dok! Ditunggu pesanan berikutnya.",
-    },
-    ];
+export default function AdminReviewsPage() {
+  const [reviews, setReviews] = useState<ReviewRecord[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [starFilter, setStarFilter] = useState<string>("ALL");
 
-    export default function AdminReviewsPage() {
-    const [reviews, setReviews] = useState<ReviewItem[]>(defaultSampleReviews);
-    const [loading, setLoading] = useState(true);
-    const [activeReplyId, setActiveReplyId] = useState<string | null>(null);
-    const [replyInput, setReplyInput] = useState<{ [id: string]: string }>({});
+  const [editingId, setEditingId] = useState<number | string | null>(null);
+  const [replyText, setReplyText] = useState<string>("");
 
-    async function loadReviews() {
-        try {
-        setLoading(true);
+  useEffect(() => {
+    async function fetchReviews() {
+      try {
         const res = await fetch("/api/reviews", { cache: "no-store" });
         if (res.ok) {
-            const dbReviews: ReviewItem[] = await res.json();
-            if (Array.isArray(dbReviews) && dbReviews.length > 0) {
-            setReviews([...dbReviews, ...defaultSampleReviews]);
-            } else {
-            setReviews(defaultSampleReviews);
-            }
-        } else {
-            setReviews(defaultSampleReviews);
+          const data = (await res.json()) as ReviewRecord[];
+          setReviews(Array.isArray(data) ? data : []);
         }
-        } catch (err) {
+      } catch (err) {
         console.error("Gagal memuat ulasan:", err);
-        setReviews(defaultSampleReviews);
-        } finally {
+      } finally {
         setLoading(false);
-        }
+      }
     }
 
-    useEffect(() => {
-        queueMicrotask(() => {
-        void loadReviews();
-        });
-    }, []);
+    void fetchReviews();
+  }, []);
 
-    async function handleSendReply(id: string) {
-        const text = replyInput[id]?.trim();
-        if (!text) return;
+  function formatReviewDate(dateStr?: string): string {
+    if (!dateStr) return "Baru saja";
+    const parsed = new Date(dateStr);
+    if (isNaN(parsed.getTime())) {
+      return dateStr; // Kembalikan teks seperti "Hari ini", "2 hari lalu" apa adanya
+    }
+    return parsed.toLocaleDateString("id-ID");
+  }
 
-        if (id.startsWith("sample-")) {
-        setReviews((prev) =>
-            prev.map((r) => (r.id === id ? { ...r, reply: text } : r))
-        );
-        setActiveReplyId(null);
-        return;
-        }
-
-        try {
-        const res = await fetch("/api/reviews", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id, reply: text }),
-        });
-
-        if (res.ok) {
-            setReviews((prev) =>
-            prev.map((r) => (r.id === id ? { ...r, reply: text } : r))
-            );
-            setActiveReplyId(null);
-        } else {
-            alert("Gagal menyimpan balasan ulasan.");
-        }
-        } catch {
-        alert("Terjadi kendala saat mengirim balasan.");
-        }
+  async function handleSaveReply(id: number | string) {
+    try {
+      await fetch(`/api/reviews/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminReply: replyText, reply: replyText }),
+      });
+    } catch {
+      // Tetap update state UI meskipun item berasal dari INITIAL_REVIEWS statis
     }
 
-    async function handleDeleteReview(id: string) {
-        if (!confirm("Hapus ulasan pelanggan ini secara permanen?")) return;
+    setReviews((prev) =>
+      prev.map((r) =>
+        r.id === id ? { ...r, adminReply: replyText, reply: replyText } : r
+      )
+    );
+    setEditingId(null);
+    setReplyText("");
+  }
 
-        if (id.startsWith("sample-")) {
-        setReviews((prev) => prev.filter((r) => r.id !== id));
-        return;
-        }
+  async function handleToggleWebDisplay(id: number | string, currentStatus: boolean) {
+    const newStatus = !currentStatus;
+    setReviews((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, showOnWebsite: newStatus } : r))
+    );
 
-        try {
-        const res = await fetch(`/api/reviews?id=${id}`, { method: "DELETE" });
-        if (res.ok) {
-            setReviews((prev) => prev.filter((r) => r.id !== id));
-        } else {
-            alert("Gagal menghapus ulasan.");
-        }
-        } catch {
-        alert("Terjadi kendala saat menghapus ulasan.");
-        }
+    try {
+      await fetch(`/api/reviews/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ showOnWebsite: newStatus }),
+      });
+    } catch {
+      // Abaikan jika ID statis
     }
+  }
 
-    return (
+  async function handleDeleteReview(id: number | string) {
+    if (!confirm("Yakin ingin menghapus ulasan ini?")) return;
+    setReviews((prev) => prev.filter((r) => r.id !== id));
+
+    try {
+      await fetch(`/api/reviews/${id}`, {
+        method: "DELETE",
+      });
+    } catch {
+      // Abaikan jika ID statis
+    }
+  }
+
+  const filteredReviews = reviews.filter((rev) => {
+    if (starFilter === "ALL") return true;
+    return Number(rev.rating) === Number(starFilter);
+  });
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", backgroundColor: "#FAF6EE" }}>
+      <header
+        style={{
+          backgroundColor: "#FFFFFF",
+          borderBottom: "1px solid #E5DEC9",
+          padding: "18px 32px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
         <div>
-        <div style={{ marginBottom: "24px" }}>
-            <h2
-            style={{
-                fontSize: "24px",
-                fontWeight: "900",
-                color: "#1E293B",
-                margin: "0 0 6px",
-                fontFamily: "serif",
-            }}
-            >
+          <h1 style={{ margin: 0, fontSize: "22px", fontWeight: 900, color: "#2A1A11" }}>
             Kelola Ulasan Pelanggan
-            </h2>
-            <p style={{ fontSize: "13px", color: "#64748B", margin: 0 }}>
-            Pantau ulasan dari customer dan berikan balasan resmi restoran.
-            </p>
+          </h1>
+          <p style={{ margin: "3px 0 0", fontSize: "12.5px", color: "#6D4C30" }}>
+            Pantau ulasan dari customer, berikan balasan resmi, dan pilih ulasan untuk ditampilkan di web.
+          </p>
         </div>
+      </header>
 
+      <div style={{ padding: "32px", display: "flex", flexDirection: "column", gap: "20px" }}>
         <div
-            style={{
+          style={{
             backgroundColor: "#FFFFFF",
-            borderRadius: "16px",
-            border: "1px solid #E2E8F0",
-            padding: "26px",
-            boxShadow: "0 4px 20px rgba(0,0,0,0.03)",
-            }}
+            borderRadius: "20px",
+            padding: "24px",
+            border: "1.5px solid #E5DEC9",
+            boxShadow: "0 4px 15px rgba(0,0,0,0.03)",
+          }}
         >
-            <div style={{ marginBottom: "22px" }}>
-            <h3
-                style={{
-                margin: "0 0 4px",
-                fontSize: "16px",
-                fontWeight: "800",
-                color: "#1E293B",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                }}
-            >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1E293B" strokeWidth={2}>
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px", flexWrap: "wrap", gap: "12px" }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 900, color: "#2A1A11" }}>
                 Kelola &amp; Balas Ulasan Pelanggan
-            </h3>
-            <p style={{ margin: 0, fontSize: "12px", color: "#64748B" }}>
+              </h3>
+              <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#6D4C30" }}>
                 Baca ulasan customer dan kirimkan respon resmi restoran yang langsung tampil di website.
-            </p>
+              </p>
             </div>
 
-            {loading ? (
-            <div style={{ textAlign: "center", padding: "40px", color: "#64748B", fontSize: "13px" }}>
-                Memuat daftar testimoni...
-            </div>
-            ) : reviews.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "40px", color: "#64748B", fontSize: "13px" }}>
-                Belum ada ulasan customer yang masuk.
-            </div>
-            ) : (
-            <div
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontSize: "12.5px", fontWeight: 800, color: "#6D4C30" }}>Filter Bintang:</span>
+              <select
+                value={starFilter}
+                onChange={(e) => setStarFilter(e.target.value)}
                 style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-                gap: "20px",
+                  padding: "8px 14px",
+                  borderRadius: "10px",
+                  border: "1.5px solid #D6C7B2",
+                  backgroundColor: "#FAF6EE",
+                  fontSize: "13px",
+                  fontWeight: 800,
+                  color: "#2A1A11",
+                  cursor: "pointer",
                 }}
-            >
-                {reviews.map((rev) => (
-                <div
+              >
+                <option value="ALL">Semua Bintang ({reviews.length})</option>
+                <option value="5">⭐⭐⭐⭐⭐ (5 Bintang)</option>
+                <option value="4">⭐⭐⭐⭐ (4 Bintang)</option>
+                <option value="3">⭐⭐⭐ (3 Bintang)</option>
+                <option value="2">⭐⭐ (2 Bintang)</option>
+                <option value="1">⭐ (1 Bintang)</option>
+              </select>
+            </div>
+          </div>
+
+          {loading ? (
+            <div style={{ padding: "40px", textAlign: "center", color: "#6D4C30", fontWeight: 700 }}>
+              Memuat ulasan pelanggan...
+            </div>
+          ) : filteredReviews.length === 0 ? (
+            <div style={{ padding: "40px", textAlign: "center", color: "#8A6B47", fontWeight: 700 }}>
+              Tidak ada ulasan dalam kategori bintang ini.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "20px" }}>
+              {filteredReviews.map((rev) => {
+                const ratingNum = Number(rev.rating) || 5;
+                const starsString = "⭐".repeat(ratingNum);
+                const isShow = rev.showOnWebsite ?? true;
+                const displayAuthor = rev.customerName || rev.name || "Pelanggan";
+                const displayReply = rev.adminReply || rev.reply || "";
+
+                return (
+                  <div
                     key={rev.id}
                     style={{
-                    backgroundColor: "#FFFFFF",
-                    border: "1px solid #E2E8F0",
-                    borderRadius: "14px",
-                    padding: "20px",
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "space-between",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.02)",
+                      backgroundColor: "#FCFBF7",
+                      borderRadius: "16px",
+                      padding: "20px",
+                      border: "1.5px solid #E5DEC9",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                      gap: "14px",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
                     }}
-                >
+                  >
                     <div>
-                    {/* Rating Stars */}
-                    <div
-                        style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        marginBottom: "12px",
-                        }}
-                    >
-                        <div style={{ color: "#F59E0B", fontSize: "15px", letterSpacing: "2px" }}>
-                        {"★".repeat(rev.rating || 5)}
-                        </div>
-                        <span
-                        style={{
-                            fontSize: "10px",
-                            color: "#64748B",
-                            backgroundColor: "#F1F5F9",
-                            padding: "2px 8px",
-                            borderRadius: "10px",
-                        }}
-                        >
-                        {rev.timeAgo || "Hari ini"}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                        <span style={{ fontSize: "14px", letterSpacing: "1px" }}>{starsString}</span>
+                        <span style={{ fontSize: "11px", color: "#8A6B47", fontWeight: 700, backgroundColor: "#F4EFE6", padding: "3px 8px", borderRadius: "12px" }}>
+                          {formatReviewDate(rev.createdAt)}
                         </span>
-                    </div>
+                      </div>
 
-                    {/* Isi Review */}
-                    <p
-                        style={{
-                        fontSize: "13px",
-                        color: "#475569",
-                        lineHeight: "1.6",
-                        margin: "0 0 16px",
-                        fontStyle: "italic",
-                        }}
-                    >
+                      <p style={{ margin: "0 0 12px", fontSize: "13.5px", fontStyle: "italic", color: "#2A1A11", lineHeight: 1.5 }}>
                         &ldquo;{rev.comment}&rdquo;
-                    </p>
+                      </p>
 
-                    {/* Identitas Customer */}
-                    <div style={{ marginBottom: "14px" }}>
-                        <strong style={{ fontSize: "13px", color: "#0F172A", display: "block" }}>
-                        {rev.name}
-                        </strong>
-                        <span style={{ fontSize: "11px", color: "#64748B" }}>
+                      <div style={{ fontWeight: 900, fontSize: "13.5px", color: "#2A1A11" }}>
+                        {displayAuthor}
+                      </div>
+                      <div style={{ fontSize: "11.5px", color: "#6D4C30" }}>
                         {rev.city || "Jakarta"}
-                        </span>
-                    </div>
+                      </div>
 
-                    {/* Balasan */}
-                    {rev.reply && (
+                      {displayReply && editingId !== rev.id && (
                         <div
-                        style={{
-                            backgroundColor: "#F8FAFC",
-                            borderLeft: "3px solid #1E293B",
+                          style={{
+                            marginTop: "12px",
+                            backgroundColor: "#F4EFE6",
+                            borderRadius: "10px",
                             padding: "10px 12px",
-                            borderRadius: "0 8px 8px 0",
-                            fontSize: "11px",
-                            marginBottom: "14px",
-                        }}
-                        >
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                            <strong style={{ color: "#0F172A", display: "flex", alignItems: "center", gap: "4px" }}>
-                            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <polyline points="9 10 4 15 9 20" />
-                                <path d="M20 4v7a4 4 0 0 1-4 4H4" />
-                            </svg>
-                            Balasan Anda (Restoran):
-                            </strong>
-                            <button
-                            type="button"
-                            onClick={() => {
-                                setActiveReplyId(rev.id);
-                                setReplyInput({ ...replyInput, [rev.id]: rev.reply || "" });
-                            }}
-                            style={{
-                                background: "none",
-                                border: "none",
-                                color: "#64748B",
-                                fontSize: "10px",
-                                cursor: "pointer",
-                                textDecoration: "underline",
-                            }}
-                            >
-                            Edit Balasan
-                            </button>
-                        </div>
-                        <span style={{ color: "#475569", lineHeight: "1.5" }}>{rev.reply}</span>
-                        </div>
-                    )}
-
-                    {/* Form Input Balasan */}
-                    {activeReplyId === rev.id && (
-                        <div style={{ marginBottom: "14px" }}>
-                        <textarea
-                            rows={2}
-                            placeholder="Ketik balasan resmi dari restoran..."
-                            value={replyInput[rev.id] || ""}
-                            onChange={(e) =>
-                            setReplyInput({ ...replyInput, [rev.id]: e.target.value })
-                            }
-                            style={{
-                            width: "100%",
-                            padding: "8px 10px",
-                            borderRadius: "8px",
-                            border: "1px solid #CBD5E1",
+                            borderLeft: "3px solid #2A1A11",
                             fontSize: "12px",
-                            color: "#1E293B",
-                            outline: "none",
-                            boxSizing: "border-box",
-                            }}
-                        />
-                        <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
-                            <button
-                            type="button"
-                            onClick={() => handleSendReply(rev.id)}
+                          }}
+                        >
+                          <div style={{ fontWeight: 800, color: "#2A1A11", marginBottom: "3px" }}>
+                            ↩ Balasan Anda (Restoran):
+                          </div>
+                          <div style={{ color: "#432818", lineHeight: 1.4 }}>{displayReply}</div>
+                        </div>
+                      )}
+
+                      {editingId === rev.id && (
+                        <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                          <textarea
+                            rows={2}
+                            value={replyText}
+                            onChange={(e) => setReplyText(e.target.value)}
+                            placeholder="Tulis balasan resmi restoran..."
                             style={{
+                              width: "100%",
+                              padding: "8px 10px",
+                              borderRadius: "8px",
+                              border: "1.5px solid #2A1A11",
+                              backgroundColor: "#FFFFFF",
+                              fontSize: "12.5px",
+                            }}
+                          />
+                          <div style={{ display: "flex", gap: "6px" }}>
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveReply(rev.id)}
+                              style={{
                                 padding: "6px 12px",
+                                borderRadius: "6px",
+                                border: "none",
                                 backgroundColor: "#166534",
                                 color: "#FFFFFF",
-                                border: "none",
-                                borderRadius: "6px",
-                                fontSize: "11px",
-                                fontWeight: "700",
+                                fontSize: "12px",
+                                fontWeight: 800,
                                 cursor: "pointer",
-                            }}
+                              }}
                             >
-                            Simpan Balasan
+                              Simpan
                             </button>
                             <button
-                            type="button"
-                            onClick={() => setActiveReplyId(null)}
-                            style={{
-                                padding: "6px 10px",
-                                backgroundColor: "#F1F5F9",
-                                color: "#475569",
-                                border: "none",
+                              type="button"
+                              onClick={() => setEditingId(null)}
+                              style={{
+                                padding: "6px 12px",
                                 borderRadius: "6px",
-                                fontSize: "11px",
+                                border: "1px solid #CBD5E1",
+                                backgroundColor: "#FFFFFF",
+                                color: "#475569",
+                                fontSize: "12px",
+                                fontWeight: 800,
                                 cursor: "pointer",
-                            }}
+                              }}
                             >
-                            Batal
+                              Batal
                             </button>
+                          </div>
                         </div>
-                        </div>
-                    )}
+                      )}
                     </div>
 
-                    <div style={{ display: "flex", gap: "8px", borderTop: "1px solid #F1F5F9", paddingTop: "12px" }}>
-                    <button
-                        type="button"
-                        onClick={() => {
-                        setActiveReplyId(rev.id);
-                        setReplyInput({ ...replyInput, [rev.id]: rev.reply || "" });
-                        }}
-                        style={{
-                        flex: 1,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: "6px",
-                        padding: "8px 12px",
-                        backgroundColor: "#1E293B",
-                        color: "#FFFFFF",
-                        border: "none",
-                        borderRadius: "8px",
-                        fontSize: "11px",
-                        fontWeight: "700",
-                        cursor: "pointer",
-                        }}
-                    >
-                        <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <polyline points="9 10 4 15 9 20" />
-                        <path d="M20 4v7a4 4 0 0 1-4 4H4" />
-                        </svg>
-                        <span>{rev.reply ? "Edit Balasan" : "Balas Ulasan Ini"}</span>
-                    </button>
+                    <div style={{ borderTop: "1px solid #E5DEC9", paddingTop: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "12px", fontWeight: 800, color: "#2A1A11" }}>
+                        <input
+                          type="checkbox"
+                          checked={isShow}
+                          onChange={() => void handleToggleWebDisplay(rev.id, isShow)}
+                          style={{ width: "16px", height: "16px", accentColor: "#166534", cursor: "pointer" }}
+                        />
+                        <span>Tampilkan di Web Customer</span>
+                      </label>
 
-                    <button
-                        type="button"
-                        onClick={() => handleDeleteReview(rev.id)}
-                        style={{
-                        padding: "8px 14px",
-                        backgroundColor: "#DC2626",
-                        color: "#FFFFFF",
-                        border: "none",
-                        borderRadius: "8px",
-                        fontSize: "11px",
-                        fontWeight: "700",
-                        cursor: "pointer",
-                        }}
-                    >
-                        Hapus Ulasan
-                    </button>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        {editingId !== rev.id && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingId(rev.id);
+                              setReplyText(displayReply);
+                            }}
+                            style={{
+                              flex: 1,
+                              padding: "8px 10px",
+                              borderRadius: "8px",
+                              border: "none",
+                              backgroundColor: "#1E293B",
+                              color: "#FFFFFF",
+                              fontSize: "12px",
+                              fontWeight: 800,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {displayReply ? "↩ Edit Balasan" : "↩ Balas Ulasan Ini"}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteReview(rev.id)}
+                          style={{
+                            padding: "8px 14px",
+                            borderRadius: "8px",
+                            border: "none",
+                            backgroundColor: "#DC2626",
+                            color: "#FFFFFF",
+                            fontSize: "12px",
+                            fontWeight: 800,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Hapus Ulasan
+                        </button>
+                      </div>
                     </div>
-                </div>
-                ))}
+                  </div>
+                );
+              })}
             </div>
-            )}
+          )}
         </div>
-        </div>
-    );
+      </div>
+    </div>
+  );
 }

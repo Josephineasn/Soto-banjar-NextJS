@@ -1,151 +1,206 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
-const faqs = [
-    {
-        question: "Apakah kuah soto dikirim terpisah agar tidak tumpah?",
-        answer:
-        "Ya, kuah kaldu rempah dikemas khusus menggunakan standing pouch tahan panas food-grade berlapis rapat dan disegel terpisah dari ketupat, suwiran ayam kampung, dan perkedel untuk menjaga kesegaran serta rasa gurih optimal.",
-    },
-    {
-        question: "Berapa lama waktu pengantaran di wilayah Jabodetabek?",
-        answer:
-        "Untuk kurir instan rata-rata tiba dalam 30 - 45 menit setelah pesanan selesai diracik. Kami memastikan setiap porsi dikemas higienis dengan thermal bag agar tiba dalam kondisi masih hangat siap santap.",
-    },
-    {
-        question: "Apakah seluruh menu dijamin 100% Halal?",
-        answer:
-        "Seluruh bahan baku yang kami olah, mulai dari ayam kampung pilihan, telur bebek, sayuran segar, hingga bumbu rempah dapur telah bersertifikasi halal dan diproses dengan standar higienis tinggi tanpa bahan pengawet.",
-    },
-    {
-        question: "Metode pembayaran apa saja yang didukung?",
-        answer:
-        "Kami menerima pembayaran otomatis melalui QRIS (GoPay, OVO, DANA, ShopeePay, BCA, dll.), Virtual Account Bank nasional, serta metode Transfer Bank langsung.",
-    },
-    ];
+interface FaqItem {
+  id: number;
+  q: string;
+  a: string;
+}
 
-    export default function Faqsection() {
-    const [openIndex, setOpenIndex] = useState<number | null>(0);
+export default function Faqsection() {
+  const [faqData, setFaqData] = useState<{
+    faqBadge: string;
+    faqMainTitle: string;
+    faqDesc: string;
+    faqs: FaqItem[];
+  }>({
+    faqBadge: "TANYA JAWAB",
+    faqMainTitle: "Pertanyaan Umum (FAQ)",
+    faqDesc:
+      "Punya pertanyaan seputar cara pesan, pengiriman, dan kualitas soto kami?",
+    faqs: [
+      {
+        id: 1,
+        q: "Apakah kuah soto dikirim terpisah agar tidak tumpah?",
+        a: "Ya, kuah kaldu rempah dikemas khusus menggunakan mangkuk/standing pouch tahan panas berlapis rapat yang disegel rapi terpisah dari ketupat, suwiran ayam, dan perkedel untuk menjaga kesegaran dan menghindari tumpah di jalan.",
+      },
+      {
+        id: 2,
+        q: "Berapa lama waktu pengantaran di wilayah Jabodetabek?",
+        a: "Rata-rata pengantaran berkisar antara 30 hingga 45 menit tergantung jarak wilayah pengantaran. Kurir kami akan segera meluncur setelah dapur selesai menyiapkan pesanan Anda.",
+      },
+      {
+        id: 3,
+        q: "Apakah seluruh menu dijamin 100% Halal?",
+        a: "Semua menu dijamin 100% Halal. Kami menggunakan ayam kampung segar pilihan, rempah alami Nusantara, dan telur bebek berkualitas tanpa bahan pengawet atau non-halal.",
+      },
+      {
+        id: 4,
+        q: "Metode pembayaran apa saja yang didukung?",
+        a: "Kami melayani pembayaran melalui Virtual Account Bank (BCA, Mandiri) dan Saldo E-Wallet (GoPay, OVO, ShopeePay, DANA) yang diproses secara instan dan otomatis.",
+      },
+    ],
+  });
 
-    return (
-        <section
-        id="faq"
+  const [openIds, setOpenIds] = useState<{ [id: number]: boolean }>({
+    1: true,
+    2: false,
+    3: false,
+    4: false,
+  });
+
+  useEffect(() => {
+    async function loadFaq() {
+      try {
+        const res = await fetch("/api/site-content", { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.faq) setFaqData((prev) => ({ ...prev, ...data.faq }));
+          return;
+        }
+      } catch {
+        // Fallback localStorage
+      }
+      try {
+        const saved = localStorage.getItem("soto_site_content");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed?.faq) setFaqData((prev) => ({ ...prev, ...parsed.faq }));
+        }
+      } catch {
+        // Abaikan
+      }
+    }
+
+    void loadFaq();
+    window.addEventListener("soto-content-updated", loadFaq);
+    return () => window.removeEventListener("soto-content-updated", loadFaq);
+  }, []);
+
+  return (
+    <section
+      id="faq"
+      style={{
+        maxWidth: "1000px",
+        margin: "0 auto",
+        padding: "60px 24px",
+      }}
+    >
+      <div
         style={{
-            backgroundColor: "#FAF6EE",
-            padding: "90px 24px",
+          display: "inline-block",
+          backgroundColor: "rgba(232, 209, 167, 0.35)",
+          border: "1px solid #E8D1A7",
+          color: "#734F31",
+          fontSize: "11px",
+          fontWeight: "900",
+          padding: "4px 14px",
+          borderRadius: "20px",
+          letterSpacing: "0.5px",
+          marginBottom: "10px",
+          textTransform: "uppercase",
         }}
-        >
-        <div style={{ maxWidth: "860px", margin: "0 auto" }}>
-            <div style={{ textAlign: "center", marginBottom: "45px" }}>
+      >
+        {faqData.faqBadge}
+      </div>
+
+      <h2
+        style={{
+          margin: "0 0 8px",
+          fontSize: "32px",
+          fontWeight: "900",
+          color: "#1E293B",
+          fontFamily: "serif",
+        }}
+      >
+        {faqData.faqMainTitle}
+      </h2>
+
+      <p style={{ margin: "0 0 28px", fontSize: "14.5px", color: "#64748B" }}>
+        {faqData.faqDesc}
+      </p>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+        {faqData.faqs.map((f) => {
+          const isOpen = openIds[f.id] ?? false;
+          return (
             <div
-                style={{
-                display: "inline-block",
-                background: "rgba(157, 145, 103, 0.2)",
-                border: "1.5px solid #9D9167",
-                color: "#734F31",
-                fontSize: "12px",
-                fontWeight: "900",
-                textTransform: "uppercase",
-                padding: "6px 16px",
-                borderRadius: "30px",
-                marginBottom: "12px",
-                letterSpacing: "0.5px",
-                }}
+              key={f.id}
+              style={{
+                backgroundColor: "#FFFFFF",
+                borderRadius: "14px",
+                border: "1px solid #E2E8F0",
+                overflow: "hidden",
+                boxShadow: "0 4px 14px rgba(0,0,0,0.03)",
+              }}
             >
-                Tanya Jawab
-            </div>
-            <h2
+              <button
+                type="button"
+                onClick={() =>
+                  setOpenIds((prev) => ({ ...prev, [f.id]: !isOpen }))
+                }
                 style={{
-                fontSize: "36px",
-                fontWeight: "900",
-                color: "#734F31",
-                margin: "0 0 10px 0",
+                  width: "100%",
+                  padding: "18px 22px",
+                  backgroundColor: "#FFFFFF",
+                  border: "none",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  gap: "12px",
                 }}
-            >
-                Pertanyaan Umum (FAQ)
-            </h2>
-            <p style={{ fontSize: "15px", color: "#9D9167", margin: 0, fontWeight: "600" }}>
-                Punya pertanyaan seputar cara pesan, pengiriman, dan kualitas soto kami?
-            </p>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            {faqs.map((faq, index) => {
-                const isOpen = openIndex === index;
-                return (
-                <div
-                    key={index}
-                    style={{
-                    backgroundColor: "#ffffff",
-                    border: isOpen ? "2px solid #734F31" : "1.5px solid #E8D1A7",
-                    borderLeft: isOpen ? "6px solid #734F31" : "1.5px solid #E8D1A7",
-                    borderRadius: "16px",
-                    overflow: "hidden",
-                    boxShadow: isOpen
-                        ? "0 10px 25px rgba(115, 79, 49, 0.08)"
-                        : "0 3px 10px rgba(0, 0, 0, 0.02)",
-                    transition: "all 0.2s ease",
-                    }}
+              >
+                <span
+                  style={{
+                    fontSize: "15px",
+                    fontWeight: "800",
+                    color: "#0F172A",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                  }}
                 >
-                    <button
-                    type="button"
-                    onClick={() => setOpenIndex(isOpen ? null : index)}
-                    style={{
-                        width: "100%",
-                        padding: "20px 24px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        background: isOpen ? "#FAF6EE" : "#ffffff",
-                        border: "none",
-                        cursor: "pointer",
-                        textAlign: "left",
-                        gap: "14px",
-                    }}
-                    >
-                    <span
-                        style={{
-                        fontSize: "16px",
-                        fontWeight: "800",
-                        color: isOpen ? "#734F31" : "#4B382A",
-                        }}
-                    >
-                        {faq.question}
-                    </span>
-                    <span
-                        style={{
-                        transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
-                        transition: "transform 0.25s ease",
-                        color: "#9D9167",
-                        fontSize: "14px",
-                        fontWeight: "900",
-                        flexShrink: 0,
-                        }}
-                    >
-                        ▼
-                    </span>
-                    </button>
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    style={{ flexShrink: 0, color: "#734F31" }}
+                  >
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 16h-2v-2h2v2zm1.07-7.75l-.9.92C12.45 11.9 12 12.5 12 14h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z" />
+                  </svg>
+                  {f.q}
+                </span>
+                <span
+                  style={{
+                    color: "#64748B",
+                    fontSize: "16px",
+                    fontWeight: "bold",
+                  }}
+                >
+                  {isOpen ? "∧" : "∨"}
+                </span>
+              </button>
 
-                    {isOpen && (
-                    <div
-                        style={{
-                        padding: "0 24px 22px 24px",
-                        fontSize: "14px",
-                        lineHeight: "1.8",
-                        color: "#734F31",
-                        backgroundColor: "#FAF6EE",
-                        borderTop: "1px dashed #E8D1A7",
-                        }}
-                    >
-                        {faq.answer}
-                    </div>
-                    )}
+              {isOpen && (
+                <div
+                  style={{
+                    padding: "0 22px 18px 50px",
+                    fontSize: "14px",
+                    color: "#64748B",
+                    lineHeight: "1.65",
+                  }}
+                >
+                  {f.a}
                 </div>
-                );
-            })}
+              )}
             </div>
-        </div>
-        </section>
-    );
+          );
+        })}
+      </div>
+    </section>
+  );
 }

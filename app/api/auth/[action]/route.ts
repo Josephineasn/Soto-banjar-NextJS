@@ -1,115 +1,181 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import {
+  hashPassword,
+  verifyPassword,
+  isPasswordHashed,
+} from "@/lib/password";
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ action: string }> }
-) {
-  const { action } = await params;
-  const body = await req.json();
+export const dynamic = "force-dynamic";
 
-  // 1. REGISTRASI
-  if (action === "register") {
-    const { name, email, password, role } = body;
+interface AuthRequestBody {
+  name?: string;
+  username?: string;
+  email?: string;
+  password?: string;
+}
 
-    if (!name || !email || !password) {
-      return NextResponse.json({ error: "Data registrasi belum lengkap." }, { status: 400 });
+// Otomatis ubah semua password teks biasa yang ada di Prisma Studio menjadi kode acak (enkripsi)
+async function upgradePlainPasswords() {
+  try {
+    const allUsers = await prisma.user.findMany();
+    for (const u of allUsers) {
+      if (u.password && !isPasswordHashed(u.password)) {
+        const encrypted = hashPassword(u.password);
+        await prisma.user.update({
+          where: { id: u.id },
+          data: { password: encrypted },
+        });
+      }
     }
-
-    const cleanEmail = String(email).trim().toLowerCase();
-
-    // Validasi email
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      return NextResponse.json({ error: "Format email tidak valid (harus menyertakan @)." }, { status: 400 });
-    }
-
-    // Validasi kata sandi (minimal 6 karakter & ada angka)
-    if (password.length < 6 || !/\d/.test(password)) {
-      return NextResponse.json({ error: "Kata sandi harus minimal 6 karakter dan mengandung angka." }, { status: 400 });
-    }
-
-    const existingUser = await prisma.user.findUnique({ where: { email: cleanEmail } });
-    if (existingUser) {
-      return NextResponse.json({ error: "Email sudah terdaftar." }, { status: 400 });
-    }
-
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email: cleanEmail,
-        password,
-        role: role === "ADMIN" ? "ADMIN" : "CUSTOMER",
-      },
-    });
-
-    const response = NextResponse.json({
-      message: "Registrasi berhasil.",
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
-    });
-
-    response.cookies.set("user_session", JSON.stringify({ id: user.id, name: user.name, role: user.role }), {
-      httpOnly: false,
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-    });
-
-    return response;
+  } catch (err) {
+    console.error("Gagal auto-enkripsi password lama:", err);
   }
-
-  // 2. LOGIN
-  if (action === "login") {
-    const { email, password } = body;
-    const cleanEmail = String(email).trim().toLowerCase();
-
-    const user = await prisma.user.findUnique({ where: { email: cleanEmail } });
-
-    if (!user || user.password !== password) {
-      return NextResponse.json({ error: "Email atau kata sandi salah." }, { status: 401 });
-    }
-
-    const response = NextResponse.json({
-      message: "Login berhasil.",
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
-    });
-
-    response.cookies.set("user_session", JSON.stringify({ id: user.id, name: user.name, role: user.role }), {
-      httpOnly: false,
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-    });
-
-    return response;
-  }
-
-  // 3. LOGOUT
-  if (action === "logout") {
-    const response = NextResponse.json({ message: "Logout berhasil." });
-    response.cookies.delete("user_session");
-    return response;
-  }
-
-  return NextResponse.json({ error: "Aksi tidak dikenali." }, { status: 404 });
 }
 
 export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ action: string }> }
+  _request: Request,
+  context: { params: Promise<{ action: string }> }
 ) {
-  const { action } = await params;
+  await upgradePlainPasswords();
+  const { action } = await context.params;
 
   if (action === "me") {
-    const sessionCookie = req.cookies.get("user_session")?.value;
-    if (!sessionCookie) {
-      return NextResponse.json({ user: null });
-    }
-
-    try {
-      const user = JSON.parse(sessionCookie);
-      return NextResponse.json({ user });
-    } catch {
-      return NextResponse.json({ user: null });
-    }
+    return NextResponse.json({ user: null });
   }
 
-  return NextResponse.json({ error: "Not found" }, { status: 404 });
+  return NextResponse.json({ message: "Auth endpoint aktif" });
+}
+
+export async function POST(
+  request: Request,
+  context: { params: Promise<{ action: string }> }
+) {
+  await upgradePlainPasswords();
+  const { action } = await context.params;
+
+  if (action === "logout") {
+    return NextResponse.json({ message: "Berhasil keluar" });
+  }
+
+  try {
+    const body = (await request.json()) as AuthRequestBody;
+    const rawIdentifier = (
+      body.name ||
+      body.username ||
+      body.email ||
+      ""
+    ).trim();
+    const rawEmail = (body.email || "").trim().toLowerCase();
+    const rawPassword = body.password || "";
+
+    // 1. REGISTER / DAFTAR AKUN BARU (Simpan Password Terenkripsi ke Prisma)
+    if (action === "register" || action === "signup") {
+      if (!rawIdentifier || !rawPassword) {
+        return NextResponse.json(
+          { error: "Nama/Username dan Password wajib diisi!" },
+          { status: 400 }
+        );
+      }
+
+      if (rawPassword.length < 6) {
+        return NextResponse.json(
+          { error: "Password minimal 6 karakter." },
+          { status: 400 }
+        );
+      }
+
+      const existingUsers = await prisma.user.findMany();
+      const duplicate = existingUsers.find(
+        (u) =>
+          u.name.toLowerCase() === rawIdentifier.toLowerCase() ||
+          (rawEmail && u.email.toLowerCase() === rawEmail)
+      );
+
+      if (duplicate) {
+        return NextResponse.json(
+          { error: "Username atau Email sudah terdaftar!" },
+          { status: 409 }
+        );
+      }
+
+      const encryptedPassword = hashPassword(rawPassword);
+
+      const newUser = await prisma.user.create({
+        data: {
+          name: rawIdentifier,
+          email:
+            rawEmail ||
+            `${rawIdentifier.toLowerCase().replace(/\s+/g, "")}@gmail.com`,
+          password: encryptedPassword,
+          role:
+            rawIdentifier.toLowerCase() === "admin" ? "ADMIN" : "CUSTOMER",
+        },
+      });
+
+      return NextResponse.json(
+        {
+          user: {
+            id: newUser.id,
+            name: newUser.name,
+            email: newUser.email,
+            role: newUser.role,
+          },
+        },
+        { status: 201 }
+      );
+    }
+
+    // 2. LOGIN / MASUK AKUN (Cocokkan Password Asli Customer dengan Hash di Prisma)
+    if (action === "login" || action === "signin") {
+      if (!rawIdentifier || !rawPassword) {
+        return NextResponse.json(
+          { error: "Masukkan username/email dan password Anda." },
+          { status: 400 }
+        );
+      }
+
+      const users = await prisma.user.findMany();
+      const foundUser = users.find(
+        (u) =>
+          u.name.toLowerCase() === rawIdentifier.toLowerCase() ||
+          u.email.toLowerCase() === rawIdentifier.toLowerCase()
+      );
+
+      if (!foundUser) {
+        return NextResponse.json(
+          { error: "Akun tidak ditemukan. Silakan daftar terlebih dahulu." },
+          { status: 401 }
+        );
+      }
+
+      const isMatch = verifyPassword(rawPassword, foundUser.password);
+      if (!isMatch) {
+        return NextResponse.json(
+          { error: "Password yang Anda masukkan salah!" },
+          { status: 401 }
+        );
+      }
+
+      return NextResponse.json({
+        user: {
+          id: foundUser.id,
+          name: foundUser.name,
+          email: foundUser.email,
+          role: foundUser.role,
+        },
+      });
+    }
+
+    return NextResponse.json(
+      { error: "Action auth tidak dikenali" },
+      { status: 400 }
+    );
+  } catch (error) {
+    console.error(`POST /api/auth/${action} error:`, error);
+    return NextResponse.json(
+      { error: "Terjadi kesalahan pada server autentikasi" },
+      { status: 500 }
+    );
+  }
 }

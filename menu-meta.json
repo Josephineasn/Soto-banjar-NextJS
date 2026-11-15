@@ -1,0 +1,43 @@
+{
+  "categories": [
+    "makanan",
+    "cemilan",
+    "pendamping",
+    "minuman"
+  ],
+  "items": {
+    "5": {
+      "category": "makanan",
+      "rating": 4.8,
+      "spiceLevel": "Tidak Pedas",
+      "calories": 350,
+      "ingredients": "Bawang Putih, Lada, Pala, Seledri",
+      "packaging": "Wadah Food Grade Kedap Udara",
+      "isRecommended": true,
+      "isFavorite": true,
+      "recommended": true,
+      "bestSeller": true,
+      "isBestSeller": true
+    },
+    "6": {
+      "category": "makanan",
+      "rating": 4.7,
+      "spiceLevel": "Tidak Pedas",
+      "calories": 350,
+      "ingredients": "Bawang Putih, Lada, Pala, Seledri",
+      "packaging": "Wadah Food Grade Kedap Udara",
+      "isRecommended": false,
+      "isFavorite": false,
+      "recommended": false,
+      "bestSeller": false,
+      "isBestSeller": false
+    },
+    "8": {
+      "isRecommended": false,
+      "isFavorite": false,
+      "recommended": false,
+      "bestSeller": false,
+      "isBestSeller": false
+    }
+  }
+}
