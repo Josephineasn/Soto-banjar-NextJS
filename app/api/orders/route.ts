@@ -14,6 +14,7 @@ interface IncomingOrderItem {
 
 interface IncomingOrderBody {
   id?: string | number;
+  orderId?: string | number;
   orderNumber?: string;
   orderCode?: string;
   accountName?: string;
@@ -59,7 +60,7 @@ interface IncomingOrderBody {
   note?: string;
   notes?: string;
   catatan?: string;
-  voucherCode?: string | null;
+  status?: string;
   items?: IncomingOrderItem[];
 }
 
@@ -291,8 +292,8 @@ export async function POST(request: Request) {
         paymentMethod: String(
           body.paymentMethod || "BCA Virtual Account"
         ).trim(),
-        orderNotes: combinedOrderNotes, // (Catatan voucher sudah otomatis digabung ke orderNotes)
-        status: "PENDING",
+        orderNotes: combinedOrderNotes,
+        status: String(body.status || "PENDING").toUpperCase(),
         items: {
           create: mappedItems,
         },
@@ -321,4 +322,99 @@ export async function POST(request: Request) {
       error instanceof Error ? error.message : "Gagal menyimpan pesanan";
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const body = (await request.json()) as IncomingOrderBody;
+    const rawTargetId = String(
+      body.id || body.orderId || body.orderNumber || body.orderCode || ""
+    )
+      .replace(/^#/, "")
+      .trim();
+
+    if (!rawTargetId) {
+      return NextResponse.json(
+        { error: "ID pesanan tidak ditemukan" },
+        { status: 400 }
+      );
+    }
+
+    const newStatus = String(body.status || "PENDING").toUpperCase();
+
+    const existing = await prisma.order.findUnique({
+      where: { id: rawTargetId },
+    });
+
+    if (existing) {
+      const updated = await prisma.order.update({
+        where: { id: rawTargetId },
+        data: { status: newStatus },
+        include: { items: true },
+      });
+      return NextResponse.json(updated, { status: 200 });
+    }
+
+    // Jika pesanan sebelumnya hanya ada di localStorage (belum masuk Prisma), otomatis masukkan ke Prisma!
+    const rawItems = Array.isArray(body.items) ? body.items : [];
+    const mappedItems =
+      rawItems.length > 0
+        ? rawItems.map((it) => ({
+            name: String(
+              it.name || it.title || it.menuName || "Menu Soto Banjar"
+            ),
+            qty: Math.max(1, Math.round(Number(it.qty ?? it.quantity ?? 1))),
+            price: Math.round(Number(it.price ?? 0)),
+          }))
+        : [{ name: "Paket Soto Banjar", qty: 1, price: Number(body.totalPrice ?? body.totalAmount ?? 35000) }];
+
+    const customerPhone = String(body.customerPhone || body.phone || "").trim();
+    const baseNote = String(body.note || body.notes || body.orderNotes || "").trim();
+    const combinedNote = customerPhone
+      ? `${baseNote} [HP: ${customerPhone}]`.trim()
+      : baseNote;
+
+    const upserted = await prisma.order.create({
+      data: {
+        id: rawTargetId.startsWith("SBN-") ? rawTargetId : `SBN-${rawTargetId}`,
+        customerName: String(
+          body.customerName || body.recipientName || body.name || "Pelanggan"
+        ),
+        address: String(body.address || "-"),
+        addressBenchmark: body.landmark || body.addressBenchmark || null,
+        area: String(body.area || body.deliveryArea || "Jakarta"),
+        service: String(
+          body.shippingService || body.service || "Kurir Instant"
+        ),
+        shippingFee: Math.round(
+          Number(body.shippingCost ?? body.shippingFee ?? 0)
+        ),
+        serviceFee: Math.round(
+          Number(body.thermalBagCost ?? body.serviceFee ?? 0)
+        ),
+        discount: Math.round(Number(body.discount ?? 0)),
+        totalPrice: Math.round(
+          Number(body.totalAmount ?? body.totalPrice ?? body.total ?? 0)
+        ),
+        paymentMethod: String(body.paymentMethod || "BCA Virtual Account"),
+        orderNotes: combinedNote,
+        status: newStatus,
+        items: {
+          create: mappedItems,
+        },
+      },
+      include: { items: true },
+    });
+
+    return NextResponse.json(upserted, { status: 200 });
+  } catch (error: unknown) {
+    console.error("PATCH /api/orders error:", error);
+    const message =
+      error instanceof Error ? error.message : "Gagal memperbarui status pesanan";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function PUT(request: Request) {
+  return PATCH(request);
 }
