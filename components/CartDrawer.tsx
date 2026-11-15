@@ -116,7 +116,7 @@ export default function CartDrawer({
   const [customerPhone, setCustomerPhone] = useState<string>("");
   const [selectedArea, setSelectedArea] = useState<string>("");
   const [shippingCost, setShippingCost] = useState<number>(0);
-  const [shippingService, setShippingService] = useState<string>("");
+  const [shippingService, setShippingService] = useState<string>("Kurir Instant");
   const [useThermalBag, setUseThermalBag] = useState<boolean>(false);
 
   const [address, setAddress] = useState<string>("");
@@ -237,7 +237,6 @@ export default function CartDrawer({
     const orderNumber = `SBN-${orderSeqRef.current}`;
     const nowIso = new Date().toISOString();
 
-    // Ambil juga email/nama akun yang sedang login dari prop maupun localStorage
     let activeAccountName = currentUser?.name?.trim() || "";
     let activeAccountEmail = currentUser?.email?.trim() || "";
 
@@ -250,8 +249,7 @@ export default function CartDrawer({
             const parsed = JSON.parse(raw) as { name?: string; email?: string };
             if (!activeAccountName && parsed.name) activeAccountName = parsed.name.trim();
             if (!activeAccountEmail && parsed.email) activeAccountEmail = parsed.email.trim();
-          } catch {
-          }
+          } catch {}
         }
       }
     }
@@ -265,7 +263,7 @@ export default function CartDrawer({
       recipientName: recipientName.trim() || activeAccountName || "Pelanggan",
       customerPhone: customerPhone.trim(),
       area: selectedArea,
-      shippingService,
+      shippingService: shippingService || "Kurir Instant",
       address: address.trim(),
       landmark: landmark.trim(),
       note: orderNote.trim(),
@@ -311,9 +309,6 @@ export default function CartDrawer({
         if (dbData.status) {
           newRecord.status = dbData.status;
         }
-      } else {
-        const errJson = (await res.json().catch(() => ({}))) as { error?: string };
-        console.error("Gagal simpan ke API /api/orders:", errJson);
       }
     } catch (err) {
       console.error("Network error saat simpan pesanan:", err);
@@ -329,10 +324,8 @@ export default function CartDrawer({
         "soto_complete_orders",
         JSON.stringify(existingHistory)
       );
-    } catch {
-    }
+    } catch {}
 
-    // Beritahu OrderHistoryModal & Admin bahwa ada pesanan baru
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("ordersUpdated"));
     }
@@ -342,12 +335,11 @@ export default function CartDrawer({
     setReceiptData(newRecord);
     onClearCart();
 
-    // Reset Form
     setRecipientName("");
     setCustomerPhone("");
     setSelectedArea("");
     setShippingCost(0);
-    setShippingService("");
+    setShippingService("Kurir Instant");
     setUseThermalBag(false);
     setAddress("");
     setLandmark("");
@@ -619,7 +611,7 @@ export default function CartDrawer({
                 >
                   <option value="">-- Pilih Layanan Pengiriman --</option>
                   <option value="Kurir Instant" style={{ color: "#2B1B12" }}>Kurir Instant</option>
-                  <option value="Same Day" style={{ color: "#2B1B12" }}>Kurir Regular Hemat</option>
+                  <option value="Kurir Regular Hemat" style={{ color: "#2B1B12" }}>Kurir Regular Hemat</option>
                 </select>
               </div>
 

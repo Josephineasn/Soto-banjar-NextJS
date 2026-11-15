@@ -166,8 +166,7 @@ export async function POST(request: Request) {
       if (existingOrder) {
         finalOrderId = `SBN-${Math.floor(100000 + Math.random() * 900000)}`;
       }
-    } catch {
-    }
+    } catch {}
 
     const customerName = String(
       body.customerName ||
@@ -257,6 +256,14 @@ export async function POST(request: Request) {
       )
     );
 
+    // PASTIKAN MENGAMBIL SHIPPING SERVICE / KURIR YANG DIPILIH CUSTOMER DENGAN BENAR
+    const selectedCourierService = String(
+      body.shippingService ||
+        body.service ||
+        body.courier ||
+        "Kurir Instant"
+    ).trim();
+
     const mappedItems = rawItems.map((it) => {
       const quantityVal = Math.max(
         1,
@@ -278,12 +285,7 @@ export async function POST(request: Request) {
         address: String(body.address || body.fullAddress || "-").trim(),
         addressBenchmark: rawBenchmark || null,
         area: String(body.area || body.deliveryArea || "Jakarta").trim(),
-        service: String(
-          body.shippingService ||
-            body.service ||
-            body.courier ||
-            "Kurir Instant"
-        ).trim(),
+        service: selectedCourierService, // <-- Disimpan sesuai pilihan asli (Kurir Instant / Kurir Regular Hemat)
         shippingFee,
         serviceFee,
         discount,

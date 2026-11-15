@@ -454,8 +454,7 @@ export default function AdminOrdersPage() {
                     const phoneText = ord.customerPhone || ord.phone || "-";
                     const areaText =
                       ord.area || ord.deliveryArea || "Jabodetabek";
-                    const courierText =
-                      ord.shippingService || ord.service || "Kurir Instant";
+                    const courierText = ord.shippingService || ord.service || "Kurir Instant";
                     const totalAmt = getOrderTotal(ord);
                     const rawStatus = String(
                       ord.status || "PENDING"

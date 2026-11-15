@@ -7,14 +7,14 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const adminNavItems = [
-    { href: "/admin", label: "Dashboard", icon: "📊" },
-    { href: "/admin/menu", label: "Kelola Menu", icon: "🍲" },
-    { href: "/admin/orders", label: "Pesanan Masuk", icon: "🛒" },
-    { href: "/admin/omset", label: "Rincian Omset", icon: "📈" },
-    { href: "/admin/ongkir", label: "Kelola Ongkir & Wilayah", icon: "📍" },
-    { href: "/admin/reviews", label: "Kelola Ulasan", icon: "⭐" },
-    { href: "/admin/content", label: "Edit Header & Konten", icon: "✏️" },
-    { href: "/admin/login-history", label: "Riwayat Login", icon: "🔒" },
+    { href: "/admin", label: "Dashboard"},
+    { href: "/admin/menu", label: "Kelola Menu"},
+    { href: "/admin/orders", label: "Pesanan Masuk"},
+    { href: "/admin/omset", label: "Rincian Omset"},
+    { href: "/admin/ongkir", label: "Kelola Ongkir & Wilayah"},
+    { href: "/admin/reviews", label: "Kelola Ulasan"},
+    { href: "/admin/content", label: "Edit Header & Konten"},
+    { href: "/admin/login-history", label: "Riwayat Login"},
   ];
 
   return (
@@ -107,7 +107,6 @@ export default function AdminLayout({
                   textDecoration: "none",
                 }}
               >
-                <span>{item.icon}</span>
                 <span>{item.label}</span>
               </Link>
             ))}

@@ -101,8 +101,7 @@ export default function Home() {
 
       try {
         await fetch("/api/auth/logout", { method: "POST" });
-      } catch {
-      }
+      } catch {}
       setCurrentUser(null);
     }
 
@@ -112,8 +111,7 @@ export default function Home() {
   async function handleLogout() {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
-    } catch {
-    }
+    } catch {}
     localStorage.removeItem("soto_customer_user");
     sessionStorage.removeItem("soto_active_user");
     setCurrentUser(null);
@@ -138,8 +136,7 @@ export default function Home() {
           }
           return;
         }
-      } catch {
-      }
+      } catch {}
       try {
         const saved = localStorage.getItem("soto_site_content");
         if (saved && isMounted) {
@@ -151,8 +148,7 @@ export default function Home() {
             setFooterInfo((prev) => ({ ...prev, ...parsed.locationFooter }));
           }
         }
-      } catch {
-      }
+      } catch {}
     }
 
     async function initFetch() {
@@ -193,9 +189,15 @@ export default function Home() {
     void initFetch();
     void loadDynamicSiteContent();
 
+    const handleMenuUpdate = () => {
+      void initFetch();
+    };
+    window.addEventListener("soto-menu-updated", handleMenuUpdate);
     window.addEventListener("soto-content-updated", loadDynamicSiteContent);
+
     return () => {
       isMounted = false;
+      window.removeEventListener("soto-menu-updated", handleMenuUpdate);
       window.removeEventListener(
         "soto-content-updated",
         loadDynamicSiteContent

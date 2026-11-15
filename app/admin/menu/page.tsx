@@ -74,7 +74,7 @@ export default function AdminMenuPage() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
 
-  // Modal Kelola Kategori (Tambah, Edit, Hapus)
+  // Kelola Kategori (Tambah, Edit, Hapus)
   const [isCatModalOpen, setIsCatModalOpen] = useState<boolean>(false);
   const [newCatInput, setNewCatInput] = useState<string>("");
   const [editingCatOldName, setEditingCatOldName] = useState<string | null>(null);
@@ -99,7 +99,7 @@ export default function AdminMenuPage() {
     "Wadah Food Grade Kedap Udara"
   );
   const [isFavorite, setIsFavorite] = useState<boolean>(false);
-  
+
   useEffect(() => {
     async function loadInitialData() {
       setLoading(true);
@@ -147,6 +147,7 @@ export default function AdminMenuPage() {
       if (res.ok) {
         const updatedCats = (await res.json()) as string[];
         setCategoryList(updatedCats);
+        window.dispatchEvent(new Event("soto-menu-updated"));
       }
     } catch (err) {
       console.error("Gagal menambah kategori:", err);
@@ -173,7 +174,6 @@ export default function AdminMenuPage() {
       if (res.ok) {
         const updatedCats = (await res.json()) as string[];
         setCategoryList(updatedCats);
-        // Update juga state menu lokal yang memakai kategori lama
         setMenus((prev) =>
           prev.map((m) =>
             (m.category || "").toLowerCase() === oldName
@@ -184,6 +184,7 @@ export default function AdminMenuPage() {
         if (selectedCategory === oldName) {
           setSelectedCategory(cleanNew);
         }
+        window.dispatchEvent(new Event("soto-menu-updated"));
       }
     } catch (err) {
       console.error("Gagal mengubah kategori:", err);
@@ -221,6 +222,7 @@ export default function AdminMenuPage() {
         if (selectedCategory === catName) {
           setSelectedCategory("ALL");
         }
+        window.dispatchEvent(new Event("soto-menu-updated"));
       }
     } catch (err) {
       console.error("Gagal menghapus kategori:", err);
@@ -301,6 +303,7 @@ export default function AdminMenuPage() {
           bestSeller: nextRec,
         }),
       });
+      window.dispatchEvent(new Event("soto-menu-updated"));
     } catch (err) {
       console.error("Gagal mengubah status rekomendasi:", err);
     }
@@ -345,6 +348,7 @@ export default function AdminMenuPage() {
         });
 
         if (res.ok) {
+          window.dispatchEvent(new Event("soto-menu-updated"));
           const updated = (await res.json()) as MenuItem;
           setMenus((prev) =>
             prev.map((m) =>
@@ -360,10 +364,15 @@ export default function AdminMenuPage() {
         });
 
         if (res.ok) {
+          window.dispatchEvent(new Event("soto-menu-updated"));
           const created = (await res.json()) as MenuItem;
           setMenus((prev) => [created, ...prev]);
         }
       }
+
+      // SINKRONISASI REAL-TIME KE CUSTOMER
+      window.dispatchEvent(new Event("soto-menu-updated"));
+
       setIsModalOpen(false);
     } catch (err) {
       console.error("Gagal menyimpan menu:", err);
@@ -376,6 +385,8 @@ export default function AdminMenuPage() {
     if (!confirm(`Hapus menu "${menuName}" dari daftar sajian?`)) return;
 
     setMenus((prev) => prev.filter((m) => m.id !== id));
+    window.dispatchEvent(new Event("soto-menu-updated"));
+
     try {
       await fetch(`/api/menu/${id}`, { method: "DELETE" });
     } catch (err) {
@@ -1313,7 +1324,7 @@ export default function AdminMenuPage() {
           onClick={() => setIsModalOpen(false)}
         >
           <form
-            onSubmit={handleSaveMenu}
+            onSubmit={(e) => void handleSaveMenu(e)}
             onClick={(e) => e.stopPropagation()}
             style={{
               width: "100%",

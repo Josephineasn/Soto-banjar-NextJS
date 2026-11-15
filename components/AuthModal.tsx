@@ -49,14 +49,15 @@ export function AuthModal({
 
   const [identifier, setIdentifier] = useState<string>("");
   const [name, setName] = useState<string>("");
+  
   const [password, setPassword] = useState<string>("");
   const [confirmPassword, setConfirmPassword] = useState<string>("");
   const [showPassword, setShowPassword] = useState<boolean>(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState<boolean>(false);
 
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
 
-  // Validasi aturan password secara real-time
   const hasMinLength = password.length >= 6;
   const hasNumber = /\d/.test(password);
   const isMatch = password.length > 0 && password === confirmPassword;
@@ -468,23 +469,43 @@ export function AuthModal({
                 >
                   Konfirmasi Password
                 </label>
-                <input
-                  type={showPassword ? "text" : "password"}
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Ulangi password"
-                  style={{
-                    width: "100%",
-                    padding: "10px 14px",
-                    borderRadius: "10px",
-                    border: "1.5px solid #D6C7B2",
-                    backgroundColor: "#FFFFFF",
-                    fontSize: "13px",
-                    color: "#1E293B",
-                    boxSizing: "border-box",
-                  }}
-                />
+                <div style={{ position: "relative" }}>
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Ulangi password"
+                    style={{
+                      width: "100%",
+                      padding: "10px 70px 10px 14px",
+                      borderRadius: "10px",
+                      border: "1.5px solid #D6C7B2",
+                      backgroundColor: "#FFFFFF",
+                      fontSize: "13px",
+                      color: "#1E293B",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((prev) => !prev)}
+                    style={{
+                      position: "absolute",
+                      right: "12px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      border: "none",
+                      background: "none",
+                      color: "#6D4C30",
+                      fontSize: "11px",
+                      fontWeight: 800,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {showConfirmPassword ? "Sembunyi" : "Lihat"}
+                  </button>
+                </div>
               </div>
 
               {/* INDIKATOR SYARAT PASSWORD */}
