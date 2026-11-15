@@ -38,6 +38,14 @@ export default function Herobanner({ onOrderNow }: HerobannerProps) {
     highlightWord: "Khas Banjar",
     heroSubtitle:
       "Pesan Soto Banjar hangat kaldu ayam kampung murni berpadu kayu manis, kapulaga, cengkeh, dan bunga lawang khas Kalimantan Selatan. Dikemas higienis, anti tumpah, dan cepat sampai tujuan.",
+    btnPrimaryText: "🍲 Pesan Sajian Sekarang →",
+    btnSecondaryText: "Kisah Resep Kami",
+    stat1Value: "100%",
+    stat1Label: "Rempah Asli Banjar",
+    stat2Value: "4.9 ★",
+    stat2Label: "Rating Pelanggan",
+    stat3Value: "20++",
+    stat3Label: "Menu Pilihan",
     heroImage:
       "https://indonesiakaya.com/wp-content/uploads/2023/04/sb_Artboard_5.jpg",
     featuredLabel: "MENU PALING LARIS • 1 PORSI TERJUAL",
@@ -55,21 +63,15 @@ export default function Herobanner({ onOrderNow }: HerobannerProps) {
 
   useEffect(() => {
     async function loadBannerAndTopSales() {
-      // 1. Muat teks Hero Banner dari pengaturan Admin (/api/site-content atau localStorage)
-      try {
-        const res = await fetch("/api/site-content", { cache: "no-store" });
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.banner) {
-            setBanner((prev) => ({ ...prev, ...data.banner }));
-          }
-        }
-      } catch {
+      // 1. Cek localStorage terlebih dahulu agar perubahan di tab Admin langsung terbaca instan
+      let localBannerData: Record<string, string> | null = null;
+      if (typeof window !== "undefined") {
         try {
-          const saved = localStorage.getItem("soto_site_content");
+          const saved = window.localStorage.getItem("soto_site_content");
           if (saved) {
             const parsed = JSON.parse(saved);
             if (parsed?.banner) {
+              localBannerData = parsed.banner;
               setBanner((prev) => ({ ...prev, ...parsed.banner }));
             }
           }
@@ -78,7 +80,24 @@ export default function Herobanner({ onOrderNow }: HerobannerProps) {
         }
       }
 
-      // 2. Hitung penjualan tertinggi dari /api/orders & ambil foto aslinya dari /api/menu
+      // 2. Muat teks Hero Banner dari API (/api/site-content) dan gabungkan dengan data terbaru
+      try {
+        const res = await fetch("/api/site-content", { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.banner) {
+            setBanner((prev) => ({
+              ...prev,
+              ...data.banner,
+              ...(localBannerData || {}),
+            }));
+          }
+        }
+      } catch {
+        // Gunakan data dari localStorage jika API gagal
+      }
+
+      // 3. Hitung penjualan tertinggi dari /api/orders & ambil foto aslinya dari /api/menu
       try {
         const [menuRes, orderRes] = await Promise.all([
           fetch("/api/menu", { cache: "no-store" }).catch(() => null),
@@ -93,7 +112,7 @@ export default function Herobanner({ onOrderNow }: HerobannerProps) {
         const ordersList: RawOrder[] = Array.isArray(ordersData)
           ? (ordersData as RawOrder[])
           : Array.isArray((ordersData as { orders?: RawOrder[] })?.orders)
-          ? ((ordersData as { orders: RawOrder[] }).orders)
+          ? (ordersData as { orders: RawOrder[] }).orders
           : [];
 
         // Rekap jumlah porsi terjual per nama menu dari semua pesanan yang aktif / selesai
@@ -143,7 +162,7 @@ export default function Herobanner({ onOrderNow }: HerobannerProps) {
           });
         }
 
-        // Jika belum ada transaksi yang cocok, cari menu yang cocok dengan featuredTitle (misal "Ekstra Ketupat Lembut") atau menu pertama
+        // Jika belum ada transaksi yang cocok, cari menu yang cocok dengan featuredTitle atau menu pertama
         if (!bestMenu && menus.length > 0) {
           bestMenu =
             menus.find(
@@ -172,8 +191,11 @@ export default function Herobanner({ onOrderNow }: HerobannerProps) {
 
     void loadBannerAndTopSales();
     window.addEventListener("soto-content-updated", loadBannerAndTopSales);
-    return () =>
+    window.addEventListener("storage", loadBannerAndTopSales);
+    return () => {
       window.removeEventListener("soto-content-updated", loadBannerAndTopSales);
+      window.removeEventListener("storage", loadBannerAndTopSales);
+    };
   }, []);
 
   function renderHighlightedText(text: string, highlight: string) {
@@ -292,6 +314,7 @@ export default function Herobanner({ onOrderNow }: HerobannerProps) {
             {banner.heroSubtitle}
           </p>
 
+          {/* 2 TOMBOL AKSI DINAMIS DARI ADMIN */}
           <div
             style={{
               display: "flex",
@@ -318,8 +341,9 @@ export default function Herobanner({ onOrderNow }: HerobannerProps) {
                 boxShadow: "0 8px 22px rgba(0, 0, 0, 0.25)",
               }}
             >
-              <span>🍲</span>
-              <span>Pesan Sajian Sekarang &rarr;</span>
+              <span>
+                {banner.btnPrimaryText || "🍲 Pesan Sajian Sekarang →"}
+              </span>
             </button>
 
             <a
@@ -337,10 +361,11 @@ export default function Herobanner({ onOrderNow }: HerobannerProps) {
                 alignItems: "center",
               }}
             >
-              Kisah Resep Kami
+              {banner.btnSecondaryText || "Kisah Resep Kami"}
             </a>
           </div>
 
+          {/* 3 STATISTIK DINAMIS DARI ADMIN */}
           <div
             style={{
               borderTop: "1px solid rgba(232, 209, 167, 0.2)",
@@ -358,10 +383,10 @@ export default function Herobanner({ onOrderNow }: HerobannerProps) {
                   color: "#FAF6EE",
                 }}
               >
-                100%
+                {banner.stat1Value || "100%"}
               </div>
               <div style={{ fontSize: "11.5px", color: "#B8A692" }}>
-                Rempah Asli Banjar
+                {banner.stat1Label || "Rempah Asli Banjar"}
               </div>
             </div>
 
@@ -373,10 +398,10 @@ export default function Herobanner({ onOrderNow }: HerobannerProps) {
                   color: "#FAF6EE",
                 }}
               >
-                4.9 &#9733;
+                {banner.stat2Value || "4.9 ★"}
               </div>
               <div style={{ fontSize: "11.5px", color: "#B8A692" }}>
-                Rating Pelanggan
+                {banner.stat2Label || "Rating Pelanggan"}
               </div>
             </div>
 
@@ -388,10 +413,10 @@ export default function Herobanner({ onOrderNow }: HerobannerProps) {
                   color: "#FAF6EE",
                 }}
               >
-                20++
+                {banner.stat3Value || "20++"}
               </div>
               <div style={{ fontSize: "11.5px", color: "#B8A692" }}>
-                Menu Pilihan
+                {banner.stat3Label || "Menu Pilihan"}
               </div>
             </div>
           </div>
