@@ -8,7 +8,8 @@ export interface MenuRecord {
   price: number;
   category: string;
   image: string;
-  isAvailable: boolean;
+  available: boolean;
+  isAvailable?: boolean;
   rating?: number;
   isBestSeller?: boolean;
 }
@@ -22,6 +23,7 @@ const FALLBACK_MENUS: MenuRecord[] = [
     price: 32000,
     category: "Makanan",
     image: "/soto1.jpg",
+    available: true,
     isAvailable: true,
     rating: 4.9,
     isBestSeller: true,
@@ -34,6 +36,7 @@ const FALLBACK_MENUS: MenuRecord[] = [
     price: 35000,
     category: "Makanan",
     image: "/soto2.jpg",
+    available: true,
     isAvailable: true,
     rating: 4.9,
     isBestSeller: true,
@@ -46,6 +49,7 @@ const FALLBACK_MENUS: MenuRecord[] = [
     price: 32000,
     category: "Makanan",
     image: "/soto3.jpg",
+    available: true,
     isAvailable: true,
     rating: 4.8,
     isBestSeller: false,
@@ -58,6 +62,7 @@ const FALLBACK_MENUS: MenuRecord[] = [
     price: 35000,
     category: "Makanan",
     image: "/soto4.jpg",
+    available: true,
     isAvailable: true,
     rating: 4.8,
     isBestSeller: true,
@@ -70,6 +75,7 @@ const FALLBACK_MENUS: MenuRecord[] = [
     price: 35000,
     category: "Makanan",
     image: "/soto1.jpg",
+    available: true,
     isAvailable: true,
     rating: 4.7,
     isBestSeller: false,
@@ -82,6 +88,7 @@ const FALLBACK_MENUS: MenuRecord[] = [
     price: 25000,
     category: "Cemilan",
     image: "/sate.jpg",
+    available: true,
     isAvailable: true,
     rating: 4.8,
     isBestSeller: true,
@@ -93,6 +100,7 @@ const FALLBACK_MENUS: MenuRecord[] = [
     price: 10000,
     category: "Pendamping",
     image: "/ketupat.jpg",
+    available: true,
     isAvailable: true,
     rating: 4.6,
     isBestSeller: false,
@@ -104,6 +112,7 @@ const FALLBACK_MENUS: MenuRecord[] = [
     price: 5000,
     category: "Pendamping",
     image: "/nasi.jpg",
+    available: true,
     isAvailable: true,
     rating: 4.6,
     isBestSeller: false,
@@ -115,6 +124,7 @@ const FALLBACK_MENUS: MenuRecord[] = [
     price: 6000,
     category: "Pendamping",
     image: "/perkedel.jpg",
+    available: true,
     isAvailable: true,
     rating: 4.7,
     isBestSeller: false,
@@ -126,6 +136,7 @@ const FALLBACK_MENUS: MenuRecord[] = [
     price: 8000,
     category: "Pendamping",
     image: "/telur.jpg",
+    available: true,
     isAvailable: true,
     rating: 4.7,
     isBestSeller: false,
@@ -137,6 +148,7 @@ const FALLBACK_MENUS: MenuRecord[] = [
     price: 8000,
     category: "Minuman",
     image: "/teh.jpg",
+    available: true,
     isAvailable: true,
     rating: 4.8,
     isBestSeller: false,
@@ -148,6 +160,7 @@ const FALLBACK_MENUS: MenuRecord[] = [
     price: 12000,
     category: "Minuman",
     image: "/jeruk.jpg",
+    available: true,
     isAvailable: true,
     rating: 4.8,
     isBestSeller: false,
@@ -166,14 +179,23 @@ export async function GET() {
 
     return NextResponse.json(FALLBACK_MENUS, { status: 200 });
   } catch (error: unknown) {
-    console.warn("Menggunakan fallback menu karena database read-only/offline:", error);
+    console.warn(
+      "Menggunakan fallback menu karena database read-only/offline:",
+      error
+    );
     return NextResponse.json(FALLBACK_MENUS, { status: 200 });
   }
 }
 
 export async function POST(request: Request) {
+  let body: Partial<MenuRecord> = {};
   try {
-    const body = (await request.json()) as Partial<MenuRecord>;
+    body = (await request.json()) as Partial<MenuRecord>;
+    const isAvail =
+      body.available !== undefined
+        ? Boolean(body.available)
+        : body.isAvailable !== false;
+
     const created = await prisma.menu.create({
       data: {
         name: String(body.name || "Menu Baru"),
@@ -181,12 +203,11 @@ export async function POST(request: Request) {
         price: Number(body.price || 25000),
         category: String(body.category || "Makanan"),
         image: String(body.image || "/soto1.jpg"),
-        isAvailable: body.isAvailable !== false,
+        available: isAvail,
       },
     });
     return NextResponse.json(created, { status: 201 });
   } catch {
-    const body = (await request.json().catch(() => ({}))) as Partial<MenuRecord>;
     return NextResponse.json(
       {
         id: Math.floor(100 + Math.random() * 900),
@@ -195,6 +216,7 @@ export async function POST(request: Request) {
         price: Number(body.price || 25000),
         category: String(body.category || "Makanan"),
         image: String(body.image || "/soto1.jpg"),
+        available: body.available !== false,
         isAvailable: body.isAvailable !== false,
       },
       { status: 201 }
