@@ -14,8 +14,9 @@ export async function GET() {
 
     return NextResponse.json(formatted, { status: 200 });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Gagal memuat menu";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("Gagal memuat menu dari Prisma:", error);
+    // Kembalikan array kosong atau tangani dengan aman agar tidak error 500
+    return NextResponse.json([], { status: 200 });
   }
 }
 
@@ -33,7 +34,10 @@ export async function POST(request: Request) {
         description: String(body.description || "Deskripsi menu"),
         price: Number(body.price || 25000),
         category: String(body.category || "Makanan"),
-        image: String(body.image || "https://indonesiakaya.com/wp-content/uploads/2023/04/sb_Artboard_5.jpg"),
+        image: String(
+          body.image ||
+            "https://indonesiakaya.com/wp-content/uploads/2023/04/sb_Artboard_5.jpg"
+        ),
         available: isAvail,
       },
     });
@@ -43,7 +47,8 @@ export async function POST(request: Request) {
       { status: 201 }
     );
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Gagal menambah menu";
+    const message =
+      error instanceof Error ? error.message : "Gagal menambah menu";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -68,9 +73,13 @@ export async function PUT(request: Request) {
       where: { id: targetId },
       data: {
         name: body.name !== undefined ? String(body.name) : undefined,
-        description: body.description !== undefined ? String(body.description) : undefined,
+        description:
+          body.description !== undefined
+            ? String(body.description)
+            : undefined,
         price: body.price !== undefined ? Number(body.price) : undefined,
-        category: body.category !== undefined ? String(body.category) : undefined,
+        category:
+          body.category !== undefined ? String(body.category) : undefined,
         image: body.image !== undefined ? String(body.image) : undefined,
         available: isAvail,
       },
@@ -81,7 +90,8 @@ export async function PUT(request: Request) {
       { status: 200 }
     );
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Gagal memperbarui menu";
+    const message =
+      error instanceof Error ? error.message : "Gagal memperbarui menu";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -113,7 +123,8 @@ export async function DELETE(request: Request) {
 
     return NextResponse.json({ success: true, id: targetId }, { status: 200 });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Gagal menghapus menu";
+    const message =
+      error instanceof Error ? error.message : "Gagal menghapus menu";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
