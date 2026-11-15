@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 
+
 export type CustomerPageTab =
   | "beranda"
   | "menu"
@@ -22,6 +23,9 @@ export interface NavbarProps {
   onOpenCart?: () => void;
   onOpenHistory?: () => void;
   onOpenAuth?: () => void;
+  onOpenAuthModal?: () => void;
+  onLoginClick?: () => void;
+  onAuthClick?: () => void;
   currentUser?: NavbarUser | null;
   onUpdateUser?: (updatedUser: NavbarUser) => void;
   onLogout?: () => void | Promise<void>;
@@ -30,6 +34,16 @@ export interface NavbarProps {
   searchQuery?: string;
   onSearchChange?: (q: string) => void;
   logoUrl?: string;
+}
+
+interface LocalLoginLogItem {
+  id: string;
+  logCode: string;
+  username: string;
+  role: string;
+  device: string;
+  status: string;
+  createdAt: string;
 }
 
 const NAV_ITEMS: { id: CustomerPageTab; label: string; sectionId: string }[] = [
@@ -41,11 +55,14 @@ const NAV_ITEMS: { id: CustomerPageTab; label: string; sectionId: string }[] = [
   { id: "lokasi", label: "Lokasi", sectionId: "lokasi" },
 ];
 
-export default function Navbar({
+export function Navbar({
   cartCount = 0,
   onOpenCart,
   onOpenHistory,
   onOpenAuth,
+  onOpenAuthModal,
+  onLoginClick,
+  onAuthClick,
   currentUser,
   onUpdateUser,
   onLogout,
@@ -73,6 +90,28 @@ export default function Navbar({
   const currentActiveTab = activePage ?? internalTab;
   const displayUserName = editedName || currentUser?.name || "";
 
+  function handleTriggerOpenAuth() {
+    if (onOpenAuth) {
+      onOpenAuth();
+      return;
+    }
+    if (onOpenAuthModal) {
+      onOpenAuthModal();
+      return;
+    }
+    if (onLoginClick) {
+      onLoginClick();
+      return;
+    }
+    if (onAuthClick) {
+      onAuthClick();
+      return;
+    }
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("openAuthModal"));
+    }
+  }
+
   function handleNavClick(item: { id: CustomerPageTab; sectionId: string }) {
     setInternalTab(item.id);
 
@@ -89,6 +128,78 @@ export default function Navbar({
         .getElementById(item.sectionId)
         ?.scrollIntoView({ behavior: "smooth" });
     }
+  }
+
+  async function handleLogoutWithLog() {
+    if (currentUser) {
+      const activeName = displayUserName || currentUser.name || "Pengguna";
+      const isRoleAdmin =
+        currentUser.role?.toUpperCase() === "ADMIN" ||
+        activeName.toLowerCase().includes("admin");
+      const roleLabel = isRoleAdmin ? "ADMIN" : "CUSTOMER";
+      const code = `OUT-${Math.floor(100000 + Math.random() * 900000)}`;
+      const usernameFormatted = currentUser.email
+        ? `${activeName} (${currentUser.email})`
+        : activeName;
+      const deviceInfo =
+        typeof navigator !== "undefined" ? navigator.userAgent : "Web Browser";
+
+      const logEntry: LocalLoginLogItem = {
+        id: code,
+        logCode: code,
+        username: usernameFormatted,
+        role: roleLabel,
+        device: deviceInfo,
+        status: "LOGOUT",
+        createdAt: new Date().toISOString(),
+      };
+
+      if (typeof window !== "undefined") {
+        try {
+          const raw = window.localStorage.getItem("soto_login_logs");
+          const parsed: unknown = raw ? JSON.parse(raw) : [];
+          const list: LocalLoginLogItem[] = Array.isArray(parsed)
+            ? (parsed as LocalLoginLogItem[])
+            : [];
+          list.unshift(logEntry);
+          window.localStorage.setItem("soto_login_logs", JSON.stringify(list));
+        } catch {
+          // Abaikan
+        }
+
+        const sessionKeys = [
+          "soto_user",
+          "currentUser",
+          "user",
+          "soto_banjar_user",
+          "soto_active_user",
+        ];
+        for (const k of sessionKeys) {
+          window.localStorage.removeItem(k);
+          window.sessionStorage.removeItem(k);
+        }
+      }
+
+      await fetch("/api/login-history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: usernameFormatted,
+          role: roleLabel,
+          action: "LOGOUT",
+          status: "LOGOUT",
+          device: deviceInfo,
+        }),
+      }).catch(() => {});
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("authChanged"));
+        window.dispatchEvent(new Event("ordersUpdated"));
+      }
+    }
+
+    setEditedName("");
+    await onLogout?.();
   }
 
   async function handleOpenProfileModal() {
@@ -182,6 +293,7 @@ export default function Navbar({
         "soto_active_user",
         JSON.stringify(updatedUserObj)
       );
+      localStorage.setItem("soto_user", JSON.stringify(updatedUserObj));
       onUpdateUser?.(updatedUserObj);
 
       setCurrentPasswordInput("");
@@ -223,7 +335,6 @@ export default function Navbar({
             gap: "12px",
           }}
         >
-          {/* BARIS ATAS: Logo di Kiri & Tombol Aksi/Profil (Riwayat, Keranjang, Josephine, Keluar) di Pojok Kanan */}
           <div
             style={{
               display: "flex",
@@ -233,7 +344,6 @@ export default function Navbar({
               gap: "12px",
             }}
           >
-            {/* Logo Brand */}
             <button
               type="button"
               onClick={() => handleNavClick(NAV_ITEMS[0])}
@@ -306,7 +416,6 @@ export default function Navbar({
               </div>
             </button>
 
-            {/* Tombol Aksi Pojok Kanan Atas (Riwayat, Keranjang, Josephine, Keluar) */}
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               <button
                 type="button"
@@ -398,7 +507,7 @@ export default function Navbar({
                     <span>{displayUserName}</span>
                   </button>
 
-                  {currentUser.role === "ADMIN" && (
+                  {currentUser.role?.toUpperCase() === "ADMIN" && (
                     <a
                       href="/admin"
                       style={{
@@ -417,10 +526,7 @@ export default function Navbar({
 
                   <button
                     type="button"
-                    onClick={() => {
-                      setEditedName("");
-                      void onLogout?.();
-                    }}
+                    onClick={() => void handleLogoutWithLog()}
                     style={{
                       padding: "8px 12px",
                       borderRadius: "10px",
@@ -438,7 +544,7 @@ export default function Navbar({
               ) : (
                 <button
                   type="button"
-                  onClick={() => onOpenAuth?.()}
+                  onClick={handleTriggerOpenAuth}
                   style={{
                     padding: "8px 16px",
                     borderRadius: "10px",
@@ -456,7 +562,6 @@ export default function Navbar({
             </div>
           </div>
 
-          {/* BARIS BAWAH: Menu Kapsul (Beranda, Menu, dll.) Rata Tengah */}
           <div
             style={{
               display: "flex",
@@ -504,7 +609,6 @@ export default function Navbar({
         </div>
       </header>
 
-      {/* MODAL EDIT PROFIL */}
       {profileModalOpen && (
         <div
           style={{
@@ -522,7 +626,7 @@ export default function Navbar({
           onClick={() => setProfileModalOpen(false)}
         >
           <form
-            onSubmit={handleSaveProfile}
+            onSubmit={(e) => void handleSaveProfile(e)}
             onClick={(e) => e.stopPropagation()}
             style={{
               width: "100%",
@@ -870,3 +974,5 @@ export default function Navbar({
     </>
   );
 }
+
+export default Navbar;

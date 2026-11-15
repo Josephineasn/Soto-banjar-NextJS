@@ -7,7 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
 model User {
   id        String   @id @default(cuid())
   name      String
@@ -29,14 +28,12 @@ model Menu {
   rating        Float       @default(5.0)
   popular       Boolean     @default(false)
   packagingInfo String      @default("Kemasan thermal pouch tahan panas")
-
   calories      String      @default("350 kkal")
   spicyLevel    String      @default("Tidak Pedas")
-
   createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @default(now()) @updatedAt
-  orderItems    OrderItem[]
-  reviews       Review[]
+  updatedAt     DateTime    @default(now())
+  OrderItem     OrderItem[]
+  Review        Review[]
 }
 
 model Order {
@@ -60,6 +57,16 @@ model Order {
   items            OrderItem[]
 }
 
+model LoginHistory {
+  id        Int      @id @default(autoincrement())
+  logCode   String   @default("LOG-0000")
+  username  String
+  role      String   @default("Customer")
+  status    String   @default("Berhasil")
+  device    String   @default("127.0.0.1 (Web Local)")
+  createdAt DateTime @default(now())
+}
+
 model OrderItem {
   id        Int      @id @default(autoincrement())
   orderId   String
@@ -68,8 +75,8 @@ model OrderItem {
   price     Int
   qty       Int
   createdAt DateTime @default(now())
+  Menu      Menu?    @relation(fields: [menuId], references: [id])
   order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  menu      Menu?    @relation(fields: [menuId], references: [id], onDelete: SetNull)
 }
 
 model Review {
@@ -80,10 +87,8 @@ model Review {
   comment   String
   reply     String?
   createdAt DateTime @default(now())
-
-  // Relasi ke Menu
   menuId    Int?
-  menu      Menu?    @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  Menu      Menu?    @relation(fields: [menuId], references: [id], onDelete: Cascade)
 }
 
 model DeliveryArea {
@@ -100,14 +105,4 @@ model ShippingService {
   extraPrice Int
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
-}
-
-model LoginHistory {
-  id        Int      @id @default(autoincrement())
-  logCode   String   @default("LOG-0000")
-  username  String
-  role      String   @default("Customer")
-  status    String   @default("Berhasil")
-  device    String   @default("127.0.0.1 (Web Local)")
-  createdAt DateTime @default(now())
 }
