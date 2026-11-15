@@ -95,7 +95,7 @@ export default function AdminOrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<OrderRecord | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  // State untuk Kotak Alert Kustom (Bukan alert browser atas)
+  // State untuk Kotak Alert
   const [alertBox, setAlertBox] = useState<AlertBoxState>({
     visible: false,
     title: "",
@@ -130,7 +130,6 @@ export default function AdminOrdersPage() {
             }
           }
         } catch {
-          // Lanjut ke lokal
         }
 
         let localOrders: OrderRecord[] = [];
@@ -146,7 +145,6 @@ export default function AdminOrdersPage() {
               }
             }
           } catch {
-            // Abaikan
           }
         }
 
@@ -243,7 +241,6 @@ export default function AdminOrdersPage() {
             }
           }
         } catch {
-          // Abaikan
         }
       }
 
@@ -387,7 +384,6 @@ export default function AdminOrdersPage() {
                 <option value="DIPROSES">Diproses</option>
                 <option value="DIKIRIM">Dikirim</option>
                 <option value="SELESAI">Selesai</option>
-                <option value="DIBATALKAN">Dibatalkan</option>
               </select>
             </div>
           </div>
@@ -469,8 +465,6 @@ export default function AdminOrdersPage() {
                       rawStatus === "SELESAI" ||
                       rawStatus === "COMPLETED" ||
                       rawStatus === "TERKIRIM";
-                    const isBatal =
-                      rawStatus === "DIBATALKAN" || rawStatus === "CANCELLED";
                     const isProses =
                       rawStatus === "DIPROSES" ||
                       rawStatus === "PROSES" ||
@@ -633,8 +627,6 @@ export default function AdminOrdersPage() {
                             value={
                               isSelesai
                                 ? "SELESAI"
-                                : isBatal
-                                ? "DIBATALKAN"
                                 : rawStatus === "DIKIRIM"
                                 ? "DIKIRIM"
                                 : rawStatus === "DIPROSES"
@@ -672,7 +664,6 @@ export default function AdminOrdersPage() {
                             <option value="DIPROSES">Diproses</option>
                             <option value="DIKIRIM">Dikirim</option>
                             <option value="SELESAI">Selesai</option>
-                            <option value="DIBATALKAN">Dibatalkan</option>
                           </select>
                         </td>
                         <td style={{ padding: "16px 10px" }}>
@@ -703,7 +694,6 @@ export default function AdminOrdersPage() {
         </div>
       </div>
 
-      {/* KOTAK POP-UP ALERT KUSTOM (PENGGANTI ALERT BROWSER ATAS) */}
       {alertBox.visible && (
         <div
           onClick={closeCustomAlert}
@@ -794,7 +784,7 @@ export default function AdminOrdersPage() {
         </div>
       )}
 
-      {/* MODAL DETAIL PESANAN */}
+      {/* DETAIL PESANAN */}
       {selectedOrder && (
         <div
           onClick={() => setSelectedOrder(null)}

@@ -198,7 +198,6 @@ export function AuthModal({
           list.unshift(logEntry);
           window.localStorage.setItem("soto_login_logs", JSON.stringify(list));
         } catch {
-          // Abaikan
         }
 
         void fetch("/api/login-history", {
@@ -488,7 +487,7 @@ export function AuthModal({
                 />
               </div>
 
-              {/* INDIKATOR SYARAT PASSWORD (BERUBAH JADI HIJAU JIKA SESUAI) */}
+              {/* INDIKATOR SYARAT PASSWORD */}
               <div
                 style={{
                   backgroundColor: "#FDFBF7",

@@ -6,7 +6,6 @@ export async function PATCH(
   context: { params: { id: string } | Promise<{ id: string }> }
 ) {
   try {
-    // Kompatibel dengan Next.js App Router (baik synchronous maupun Promise params)
     const resolvedParams = await Promise.resolve(context.params);
     const rawId = resolvedParams.id;
     const id = isNaN(Number(rawId)) ? rawId : Number(rawId);

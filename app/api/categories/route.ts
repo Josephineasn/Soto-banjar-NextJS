@@ -174,7 +174,6 @@ export async function DELETE(request: Request) {
       meta.categories = [...DEFAULT_CATEGORIES];
     }
 
-    // Pindahkan juga semua item di menu-meta.json yang memakai kategori yang dihapus
     Object.keys(meta.items).forEach((id) => {
       if (String(meta.items[id].category || "").toLowerCase() === targetCat) {
         meta.items[id].category = "makanan";

@@ -165,7 +165,6 @@ export async function POST(request: Request) {
         finalOrderId = `SBN-${Math.floor(100000 + Math.random() * 900000)}`;
       }
     } catch {
-      // Abaikan jika id bukan string
     }
 
     const customerName = String(

@@ -185,7 +185,6 @@ export default function OrderHistoryModal({
           return;
         }
 
-        // 1. Ambil dari API Database (/api/orders)
         let dbList: OrderRecord[] = [];
         try {
           const res = await fetch("/api/orders", { cache: "no-store" });
@@ -198,10 +197,9 @@ export default function OrderHistoryModal({
               : [];
           }
         } catch {
-          // Lanjut ke fallback lokal jika API gagal
         }
 
-        // 2. Ambil juga dari localStorage "soto_complete_orders" (yang disimpan oleh CartDrawer)
+        // Ambil juga dari localStorage "soto_complete_orders" (yang disimpan oleh CartDrawer)
         let localList: OrderRecord[] = [];
         if (typeof window !== "undefined") {
           try {
@@ -217,7 +215,7 @@ export default function OrderHistoryModal({
           }
         }
 
-        // 3. Gabungkan (prioritaskan status terbaru dari Database Prisma jika ID sama)
+        // Gabungkan (prioritaskan status terbaru dari Database Prisma jika ID sama)
         const mergedMap = new Map<string, OrderRecord>();
 
         for (const item of dbList) {
@@ -234,7 +232,7 @@ export default function OrderHistoryModal({
 
         const combinedList = Array.from(mergedMap.values());
 
-        // 4. Filter hanya milik akun yang sedang login saat ini
+        // Filter hanya milik akun yang sedang login saat ini
         const userFiltered = combinedList.filter((ord) => {
           const st = String(ord.status || "PENDING").toUpperCase();
           if (st === "DIBATALKAN" || st === "CANCELLED") return false;
@@ -463,7 +461,7 @@ export default function OrderHistoryModal({
           </div>
         </div>
 
-        {/* Isi Daftar Kartu Pesanan */}
+        {/* Daftar Kartu Pesanan */}
         <div
           style={{
             padding: "20px 24px",
@@ -554,7 +552,7 @@ export default function OrderHistoryModal({
                     boxShadow: "0 4px 16px rgba(42, 26, 17, 0.04)",
                   }}
                 >
-                  {/* Baris Atas: Kode Order & Badge Status */}
+                  {/* Kode Order & Badge Status */}
                   <div
                     style={{
                       display: "flex",
@@ -599,7 +597,7 @@ export default function OrderHistoryModal({
                     </span>
                   </div>
 
-                  {/* Kotak Metode Pembayaran & Nomor VA */}
+                  {/* Metode Pembayaran & Nomor VA */}
                   <div
                     style={{
                       backgroundColor: "#FAF6EE",

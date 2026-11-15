@@ -60,7 +60,6 @@ export default function Faqsection() {
           return;
         }
       } catch {
-        // Fallback localStorage
       }
       try {
         const saved = localStorage.getItem("soto_site_content");
@@ -69,7 +68,6 @@ export default function Faqsection() {
           if (parsed?.faq) setFaqData((prev) => ({ ...prev, ...parsed.faq }));
         }
       } catch {
-        // Abaikan
       }
     }
 

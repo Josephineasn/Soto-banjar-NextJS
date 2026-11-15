@@ -37,13 +37,11 @@ export async function PATCH(
 
     const replyVal = body.adminReply ?? body.reply;
 
-    // 1. Simpan ke file JSON lokal agar selalu persisten (baik untuk ID database maupun ID statis 101-107)
     saveApproval(rawId, {
       ...(body.showOnWebsite !== undefined ? { showOnWebsite: body.showOnWebsite } : {}),
       ...(replyVal !== undefined ? { adminReply: replyVal } : {}),
     });
 
-    // 2. Coba update juga ke Prisma jika ID tersebut ada di database
     try {
       const parsedId = isNaN(Number(rawId)) ? rawId : Number(rawId);
       const whereClause = { id: parsedId } as unknown as Parameters<
@@ -59,7 +57,6 @@ export async function PATCH(
         });
       }
     } catch {
-      // Abaikan jika ID milik INITIAL_REVIEWS (101-107) yang tidak ada di tabel Prisma
     }
 
     return NextResponse.json({ success: true, id: rawId, ...body }, { status: 200 });
@@ -87,7 +84,6 @@ export async function DELETE(
       >[0]["where"];
       await prisma.review.delete({ where: whereClause });
     } catch {
-      // Abaikan jika ID statis
     }
 
     return NextResponse.json({ success: true }, { status: 200 });

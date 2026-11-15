@@ -86,7 +86,7 @@ const DEFAULT_AREAS: DeliveryAreaOption[] = [
   { name: "Jakarta Utara", cost: 8000 },
   { name: "Jakarta Barat", cost: 10000 },
   { name: "Jakarta Selatan", cost: 22000 },
-  { name: "Jakarta Pusat", cost: 20000 },
+  { name: "Jakarta Pusat", cost: 15000 },
   { name: "Bekasi Kota / Bekasi Barat", cost: 18000 },
   { name: "Kabupaten Bekasi", cost: 20000 },
   { name: "Tangerang / Tangerang Selatan", cost: 30000 },
@@ -251,7 +251,6 @@ export default function CartDrawer({
             if (!activeAccountName && parsed.name) activeAccountName = parsed.name.trim();
             if (!activeAccountEmail && parsed.email) activeAccountEmail = parsed.email.trim();
           } catch {
-            // abaikan
           }
         }
       }
@@ -331,7 +330,6 @@ export default function CartDrawer({
         JSON.stringify(existingHistory)
       );
     } catch {
-      // abaikan
     }
 
     // Beritahu OrderHistoryModal & Admin bahwa ada pesanan baru
@@ -371,7 +369,7 @@ export default function CartDrawer({
 
   return (
     <>
-      {/* 1. DRAWER KERANJANG */}
+      {/* DRAWER KERANJANG */}
       {isOpen && !receiptData && (
         <div
           style={{
@@ -876,7 +874,7 @@ export default function CartDrawer({
         </div>
       )}
 
-      {/* 2. MODAL KONFIRMASI */}
+      {/* KONFIRMASI */}
       {showConfirmModal && (
         <div
           style={{
@@ -968,7 +966,7 @@ export default function CartDrawer({
         </div>
       )}
 
-      {/* 3. STRUK */}
+      {/* STRUK */}
       {receiptData && (
         <div
           style={{

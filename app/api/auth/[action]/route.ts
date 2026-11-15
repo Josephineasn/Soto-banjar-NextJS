@@ -19,7 +19,7 @@ export async function POST(
     const body = (await request.json()) as AuthRequestBody;
     const userAgent = request.headers.get("user-agent") || "Web Browser";
 
-    // 1. Jika user atau admin melakukan LOGOUT
+    // Jika user atau admin melakukan LOGOUT
     if (action === "logout" || action === "signout") {
       const logoutName = String(
         body.name || body.username || body.email || "Pengguna"
@@ -40,7 +40,6 @@ export async function POST(
           },
         });
       } catch {
-        // Abaikan jika gagal simpan log
       }
 
       return NextResponse.json({ message: "Logout tercatat" }, { status: 200 });
@@ -56,7 +55,7 @@ export async function POST(
       );
     }
 
-    // 2. Jika REGISTER akun baru
+    // Jika REGISTER akun baru
     if (action === "register" || action === "signup") {
       const existing = await prisma.user.findUnique({
         where: { email: cleanEmail },
@@ -91,7 +90,6 @@ export async function POST(
           },
         });
       } catch {
-        // Abaikan jika tabel belum sinkron
       }
 
       return NextResponse.json(
@@ -107,7 +105,7 @@ export async function POST(
       );
     }
 
-    // 3. Jika LOGIN
+    // Jika LOGIN
     if (action === "login" || action === "signin") {
       const user = await prisma.user.findUnique({
         where: { email: cleanEmail },
@@ -147,7 +145,6 @@ export async function POST(
           },
         });
       } catch {
-        // Abaikan jika gagal mencatat log
       }
 
       return NextResponse.json(

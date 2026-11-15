@@ -16,7 +16,6 @@ function getApprovals(): Record<string, { showOnWebsite?: boolean; adminReply?: 
       >;
     }
   } catch {
-    // Abaikan jika gagal baca
   }
   return {};
 }
@@ -110,7 +109,6 @@ export async function GET(request: Request) {
       const strId = String(rec.id);
       const savedMeta = approvals[strId];
 
-      // Default untuk review dari DB: jika ada di file approvals pakai itu, jika tidak cek properti DB
       const isShown =
         savedMeta?.showOnWebsite !== undefined
           ? savedMeta.showOnWebsite
@@ -158,7 +156,6 @@ export async function GET(request: Request) {
 
     const allReviews = [...formattedDbReviews, ...missingInitial];
 
-    // Jika diakses oleh halaman customer (?public=true), saring HANYA yang showOnWebsite === true
     const finalReviews = publicOnly
       ? allReviews.filter((rev) => rev.showOnWebsite === true)
       : allReviews;

@@ -17,7 +17,7 @@ export default function Aboutsection() {
     feature2Title: "Jeruk Kuit Segar",
     feature2Desc: "Aroma sitrus khas Banjar yang autentik dan menyegarkan.",
     aboutImage:
-      "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=900&auto=format&fit=crop&q=80",
+      "https://indonesiakaya.com/wp-content/uploads/2023/04/sb_Artboard_5.jpg",
     aboutImageTitle: "100% Rempah Asli",
     aboutImageCaption: "Resep Turun-Temurun Kalimantan",
   });
@@ -32,7 +32,6 @@ export default function Aboutsection() {
           return;
         }
       } catch {
-        // Fallback localStorage
       }
       try {
         const saved = localStorage.getItem("soto_site_content");
@@ -41,7 +40,6 @@ export default function Aboutsection() {
           if (parsed?.about) setAbout((prev) => ({ ...prev, ...parsed.about }));
         }
       } catch {
-        // Abaikan
       }
     }
 
@@ -91,7 +89,7 @@ export default function Aboutsection() {
             alignItems: "center",
           }}
         >
-          {/* KIRI: Bingkai Foto Persegi Membulat + Badge Overlay Kanan Bawah */}
+          {/* KIRI */}
           <div
             style={{
               position: "relative",
@@ -159,7 +157,7 @@ export default function Aboutsection() {
             </div>
           </div>
 
-          {/* KANAN: Teks Filosofi Rasa & 2 Kotak Keunggulan */}
+          {/* KANAN */}
           <div>
             <div
               style={{

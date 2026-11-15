@@ -34,7 +34,7 @@ export default function AdminContentPage() {
   >("banner");
   const [saveBannerNotice, setSaveBannerNotice] = useState("");
 
-  // 1. Banner Header
+  // Banner Header
   const [statusBadge, setStatusBadge] = useState("Dapur Delivery Buka");
   const [badgeTagline, setBadgeTagline] = useState(
     "Khusus Pesan Online • Area Jabodetabek"
@@ -47,7 +47,7 @@ export default function AdminContentPage() {
     "Pesan Soto Banjar hangat kaldu ayam kampung murni berpadu kayu manis, kapulaga, cengkeh, dan bunga lawang khas Kalimantan Selatan. Dikemas higienis, anti tumpah, dan cepat sampai tujuan."
   );
 
-  // State Tombol CTA & Statistik Banner Header
+  // State Tombol & Statistik Banner Header
   const [btnPrimaryText, setBtnPrimaryText] = useState(
     "🍲 Pesan Sajian Sekarang →"
   );
@@ -59,7 +59,7 @@ export default function AdminContentPage() {
   const [stat3Value, setStat3Value] = useState("20++");
   const [stat3Label, setStat3Label] = useState("Menu Pilihan");
 
-  // State Otomatis Kartu Menu Paling Laris (Sesuai Customer)
+  // State Otomatis Menu Paling Laris (Sesuai Customer)
   const [heroImage, setHeroImage] = useState(
     "https://indonesiakaya.com/wp-content/uploads/2023/04/sb_Artboard_5.jpg"
   );
@@ -69,7 +69,7 @@ export default function AdminContentPage() {
   const [featuredTitle, setFeaturedTitle] = useState("Soto Banjar Otentik");
   const [featuredPrice, setFeaturedPrice] = useState("Rp 32.000");
 
-  // 2. Filosofi Rasa / Tentang Kami
+  // Filosofi Rasa / Tentang Kami
   const [aboutBadge, setAboutBadge] = useState("FILOSOFI RASA");
   const [aboutTitle, setAboutTitle] = useState(
     "Warisan Cita Rasa Hangat dari Bumi Kalimantan"
@@ -97,7 +97,7 @@ export default function AdminContentPage() {
     "Resep Turun-Temurun Kalimantan"
   );
 
-  // 3. FAQ
+  // FAQ
   const [faqBadge, setFaqBadge] = useState("TANYA JAWAB");
   const [faqMainTitle, setFaqMainTitle] = useState("Pertanyaan Umum (FAQ)");
   const [faqDesc, setFaqDesc] = useState(
@@ -126,14 +126,14 @@ export default function AdminContentPage() {
     },
   ]);
 
-  // 4. Header Katalog Menu
+  // Header Katalog Menu
   const [menuBadge, setMenuBadge] = useState("Resep Warisan Asli Banjar");
   const [menuTitle, setMenuTitle] = useState("Menu Pilihan Kami");
   const [menuSubtitle, setMenuSubtitle] = useState(
     "Sajian khas Kalimantan Selatan dengan rebusan rempah kayu manis, kapulaga murni, dan jeruk kuit."
   );
 
-  // 5. Lokasi & Footer
+  // Lokasi & Footer
   const [locationBadge, setLocationBadge] = useState("LOKASI & KONTAK");
   const [locationTitle, setLocationTitle] = useState("Kunjungi Dapur Kami");
   const [address, setAddress] = useState(
@@ -257,7 +257,7 @@ export default function AdminContentPage() {
               data.locationFooter.cateringNote ??
                 "Menerima Pesanan Catering & Hajatan"
             );
-            setWhatsapp(data.locationFooter.whatsapp ?? "0812-3456-7890");
+            setWhatsapp(data.locationFooter.whatsapp ?? "0813-9926-0210");
             setInstagram(
               data.locationFooter.instagram ?? "@sotobanjar.selera"
             );
@@ -278,10 +278,9 @@ export default function AdminContentPage() {
           }
         }
       } catch {
-        // Abaikan
       }
 
-      // Sinkronisasi Otomatis Gambar & Kartu Menu Paling Laris Persis seperti Halaman Customer
+      // Sinkronisasi Otomatis Menu Paling Laris
       try {
         let menuList: MenuItemRecord[] = [];
         const menuRes = await fetch("/api/menu", { cache: "no-store" });
@@ -314,7 +313,6 @@ export default function AdminContentPage() {
                 orderList = parsed as OrderRecord[];
               }
             } catch {
-              // Abaikan
             }
           }
         }
@@ -378,7 +376,6 @@ export default function AdminContentPage() {
           }
         }
       } catch {
-        // Abaikan
       }
     }
 
@@ -480,11 +477,10 @@ export default function AdminContentPage() {
         body: JSON.stringify(payload),
       });
     } catch {
-      // Abaikan
     }
 
     setSaveBannerNotice(
-      "✓ Perubahan berhasil disimpan & langsung tampil di Web Customer!"
+      "✓ Perubahan berhasil disimpan"
     );
     setTimeout(() => setSaveBannerNotice(""), 3500);
   }
@@ -518,7 +514,7 @@ export default function AdminContentPage() {
     setAboutTitle("Warisan Cita Rasa Hangat dari Bumi Kalimantan");
     setAboutHighlight("Bumi Kalimantan");
     setAboutImage(
-      "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=900&auto=format&fit=crop&q=80"
+      "https://indonesiakaya.com/wp-content/uploads/2023/04/sb_Artboard_5.jpg"
     );
     setAboutImageTitle("100% Rempah Asli");
     setAboutImageCaption("Resep Turun-Temurun Kalimantan");
@@ -596,7 +592,7 @@ export default function AdminContentPage() {
         minHeight: "100vh",
       }}
     >
-      {/* HEADER HALAMAN SERAGAM DENGAN ADMIN LAINNYA */}
+      {/* HEADER */}
       <header
         style={{
           backgroundColor: "#FFFFFF",
@@ -820,7 +816,7 @@ export default function AdminContentPage() {
             </button>
           </div>
 
-          {/* TAB 1: BANNER HEADER */}
+          {/* BANNER HEADER */}
           {activeTab === "banner" && (
             <div
               style={{ display: "flex", flexDirection: "column", gap: "28px" }}
@@ -985,7 +981,7 @@ export default function AdminContentPage() {
                         {heroSubtitle}
                       </p>
 
-                      {/* 2 TOMBOL AKSI YANG BISA DIUBAH */}
+                      {/* 2 TOMBOL */}
                       <div
                         style={{
                           display: "flex",
@@ -1021,7 +1017,7 @@ export default function AdminContentPage() {
                         </span>
                       </div>
 
-                      {/* 3 STATISTIK BAWAH YANG BISA DIUBAH */}
+                      {/* 3 STATISTIK BAWAH */}
                       <div
                         style={{
                           borderTop: "1px solid rgba(232, 209, 167, 0.2)",
@@ -1267,7 +1263,7 @@ export default function AdminContentPage() {
                           marginBottom: "4px",
                         }}
                       >
-                        Judul Utama Banner (Header Title)
+                        Judul Utama Banner
                       </label>
                       <input
                         type="text"
@@ -1326,7 +1322,7 @@ export default function AdminContentPage() {
                         marginBottom: "4px",
                       }}
                     >
-                      Deskripsi Lengkap (Lead Subtitle)
+                      Deskripsi Lengkap
                     </label>
                     <textarea
                       rows={3}
@@ -1345,7 +1341,7 @@ export default function AdminContentPage() {
                     />
                   </div>
 
-                  {/* INPUT 2 TOMBOL AKSI (CTA) */}
+                  {/* INPUT 2 TOMBOL */}
                   <div
                     style={{
                       display: "grid",
@@ -1363,7 +1359,7 @@ export default function AdminContentPage() {
                           marginBottom: "4px",
                         }}
                       >
-                        Teks Tombol Utama (Kiri)
+                        Teks Tombol (Kiri)
                       </label>
                       <input
                         type="text"
@@ -1392,7 +1388,7 @@ export default function AdminContentPage() {
                           marginBottom: "4px",
                         }}
                       >
-                        Teks Tombol Kedua (Kanan)
+                        Teks Tombol (Kanan)
                       </label>
                       <input
                         type="text"
@@ -1412,7 +1408,7 @@ export default function AdminContentPage() {
                     </div>
                   </div>
 
-                  {/* INPUT 3 STATISTIK BAWAH TOMBOL */}
+                  {/* INPUT 3 STATISTIK BAWAH */}
                   <div
                     style={{
                       display: "grid",
@@ -1607,7 +1603,7 @@ export default function AdminContentPage() {
             </div>
           )}
 
-          {/* TAB 2: CERITA TENTANG KAMI - FILOSOFI RASA */}
+          {/* CERITA TENTANG KAMI - FILOSOFI RASA */}
           {activeTab === "about" && (
             <div
               style={{ display: "flex", flexDirection: "column", gap: "28px" }}
@@ -2307,7 +2303,7 @@ export default function AdminContentPage() {
             </div>
           )}
 
-          {/* TAB 3: TANYA JAWAB (FAQ) */}
+          {/* TANYA JAWAB (FAQ) */}
           {activeTab === "faq" && (
             <div
               style={{ display: "flex", flexDirection: "column", gap: "30px" }}
@@ -2944,7 +2940,7 @@ export default function AdminContentPage() {
                           fontWeight: 600,
                         }}
                       >
-                        🔍 Cari menu soto, sate, minuman...
+                        Cari menu . . .
                       </div>
                     </div>
 
@@ -3124,7 +3120,7 @@ export default function AdminContentPage() {
             </div>
           )}
 
-          {/* TAB 5: LOKASI & FOOTER */}
+          {/* LOKASI & FOOTER */}
           {activeTab === "location" && (
             <div
               style={{ display: "flex", flexDirection: "column", gap: "28px" }}

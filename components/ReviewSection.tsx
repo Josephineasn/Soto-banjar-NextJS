@@ -582,7 +582,6 @@ export default function ReviewSection({
         </div>
       )}
 
-      {/* Indikator Dot di Bawah */}
       {total > 1 && (
         <div
           style={{
@@ -613,7 +612,7 @@ export default function ReviewSection({
         </div>
       )}
 
-      {/* Modal Form Tulis Ulasan */}
+      {/* Form Tulis Ulasan */}
       {modalOpen && (
         <div
           style={{
@@ -781,7 +780,7 @@ export default function ReviewSection({
         </div>
       )}
 
-      {/* Modal Pemberitahuan Menunggu Persetujuan Admin */}
+      {/* Pemberitahuan Menunggu Persetujuan Admin */}
       {submitNotice && (
         <div
           style={{

@@ -63,7 +63,6 @@ export default function Herobanner({ onOrderNow }: HerobannerProps) {
 
   useEffect(() => {
     async function loadBannerAndTopSales() {
-      // 1. Cek localStorage terlebih dahulu agar perubahan di tab Admin langsung terbaca instan
       let localBannerData: Record<string, string> | null = null;
       if (typeof window !== "undefined") {
         try {
@@ -76,11 +75,10 @@ export default function Herobanner({ onOrderNow }: HerobannerProps) {
             }
           }
         } catch {
-          // Abaikan
         }
       }
 
-      // 2. Muat teks Hero Banner dari API (/api/site-content) dan gabungkan dengan data terbaru
+      // Muat teks Hero Banner dari API (/api/site-content) dan gabungkan dengan data terbaru
       try {
         const res = await fetch("/api/site-content", { cache: "no-store" });
         if (res.ok) {
@@ -97,7 +95,7 @@ export default function Herobanner({ onOrderNow }: HerobannerProps) {
         // Gunakan data dari localStorage jika API gagal
       }
 
-      // 3. Hitung penjualan tertinggi dari /api/orders & ambil foto aslinya dari /api/menu
+      // Hitung penjualan tertinggi dari /api/orders & ambil foto aslinya dari /api/menu
       try {
         const [menuRes, orderRes] = await Promise.all([
           fetch("/api/menu", { cache: "no-store" }).catch(() => null),
@@ -162,7 +160,6 @@ export default function Herobanner({ onOrderNow }: HerobannerProps) {
           });
         }
 
-        // Jika belum ada transaksi yang cocok, cari menu yang cocok dengan featuredTitle atau menu pertama
         if (!bestMenu && menus.length > 0) {
           bestMenu =
             menus.find(
@@ -185,7 +182,6 @@ export default function Herobanner({ onOrderNow }: HerobannerProps) {
           });
         }
       } catch {
-        // Gunakan default jika gagal fetch
       }
     }
 
@@ -422,7 +418,7 @@ export default function Herobanner({ onOrderNow }: HerobannerProps) {
           </div>
         </div>
 
-        {/* KANAN: Foto Menu Terlaris & Kartu Informasi Penjualan */}
+        {/* Foto Menu Terlaris & Kartu Informasi Penjualan */}
         <div
           style={{
             display: "flex",

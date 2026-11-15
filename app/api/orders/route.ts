@@ -167,7 +167,6 @@ export async function POST(request: Request) {
         finalOrderId = `SBN-${Math.floor(100000 + Math.random() * 900000)}`;
       }
     } catch {
-      // Abaikan
     }
 
     const customerName = String(
@@ -355,7 +354,6 @@ export async function PATCH(request: Request) {
       return NextResponse.json(updated, { status: 200 });
     }
 
-    // Jika pesanan sebelumnya hanya ada di localStorage (belum masuk Prisma), otomatis masukkan ke Prisma!
     const rawItems = Array.isArray(body.items) ? body.items : [];
     const mappedItems =
       rawItems.length > 0

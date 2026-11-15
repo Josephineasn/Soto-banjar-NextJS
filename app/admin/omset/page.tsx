@@ -99,7 +99,6 @@ export default function AdminOmsetPage() {
             }
           }
         } catch {
-          // Lanjut ke fallback lokal
         }
 
         let localOrders: OrderRecord[] = [];
@@ -115,7 +114,6 @@ export default function AdminOmsetPage() {
               }
             }
           } catch {
-            // Abaikan
           }
         }
 
@@ -286,7 +284,7 @@ export default function AdminOmsetPage() {
           gap: "24px",
         }}
       >
-        {/* KARTU RINGKASAN OMSET */}
+        {/* RINGKASAN OMSET */}
         <div
           style={{
             display: "grid",

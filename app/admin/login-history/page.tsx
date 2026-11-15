@@ -57,7 +57,6 @@ export default function AdminLoginHistoryPage() {
             }
           }
         } catch {
-          // Lanjut ke localStorage
         }
 
         let localLogs: LoginLogRecord[] = [];
@@ -71,7 +70,6 @@ export default function AdminLoginHistoryPage() {
               }
             }
           } catch {
-            // Abaikan
           }
         }
 
@@ -201,7 +199,6 @@ export default function AdminLoginHistoryPage() {
         };
       }
     } catch {
-      // Gunakan default
     }
 
     const code = `LOG-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -471,7 +468,7 @@ export default function AdminLoginHistoryPage() {
           </div>
         </div>
 
-        {/* TABEL LOG AKTIVITAS */}
+        {/* TABEL AKTIVITAS */}
         <div
           style={{
             backgroundColor: "#FFFFFF",

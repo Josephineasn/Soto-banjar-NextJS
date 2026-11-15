@@ -6,6 +6,19 @@
     "minuman"
   ],
   "items": {
+    "2": {
+      "category": "makanan",
+      "rating": 4.9,
+      "spiceLevel": "Tidak Pedas",
+      "calories": 400,
+      "ingredients": "Kayu Manis, Cengkeh, Kapulaga, Pala, Lada",
+      "packaging": "Kotak makanan",
+      "isRecommended": false,
+      "isFavorite": false,
+      "recommended": false,
+      "bestSeller": false,
+      "isBestSeller": false
+    },
     "5": {
       "category": "makanan",
       "rating": 4.8,

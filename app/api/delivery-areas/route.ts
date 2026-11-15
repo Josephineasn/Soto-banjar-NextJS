@@ -25,7 +25,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Nama wilayah dan harga wajib diisi!" }, { status: 400 });
     }
 
-    // Menggunakan cast aman tanpa 'any'
     const newArea = await prisma.deliveryArea.create({
       data: {
         name: cityName,

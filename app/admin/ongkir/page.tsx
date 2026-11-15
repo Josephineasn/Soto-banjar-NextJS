@@ -298,7 +298,7 @@ export default function AdminOngkirPage() {
         </div>
       </div>
 
-      {/* MODAL EDIT WILAYAH */}
+      {/* EDIT WILAYAH */}
       {editingArea && (
         <div
           style={{

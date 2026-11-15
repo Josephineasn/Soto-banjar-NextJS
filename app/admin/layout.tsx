@@ -28,7 +28,7 @@ export default function AdminLayout({
           "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
       }}
     >
-      {/* SIDEBAR KIRI UTAMA */}
+      {/* SIDEBAR KIRI */}
       <aside
         style={{
           width: "260px",
@@ -134,7 +134,6 @@ export default function AdminLayout({
         </div>
       </aside>
 
-      {/* KONTEN UTAMA HALAMAN ADMIN */}
       <main style={{ flex: 1, display: "flex", flexDirection: "column" }}>
         {children}
       </main>

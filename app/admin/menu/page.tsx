@@ -500,7 +500,7 @@ export default function AdminMenuPage() {
           gap: "24px",
         }}
       >
-        {/* RINGKASAN STATISTIK MENU */}
+        {/* STATISTIK MENU */}
         <div
           style={{
             display: "grid",
@@ -637,7 +637,7 @@ export default function AdminMenuPage() {
           </div>
         </div>
 
-        {/* BAR FILTER KATEGORI & PENCARIAN */}
+        {/* FILTER KATEGORI & PENCARIAN */}
         <div
           style={{
             backgroundColor: "#FFFFFF",
@@ -1034,7 +1034,7 @@ export default function AdminMenuPage() {
         )}
       </div>
 
-      {/* MODAL KELOLA KATEGORI (TAMBAH, EDIT, HAPUS) */}
+      {/* KELOLA KATEGORI (TAMBAH, EDIT, HAPUS) */}
       {isCatModalOpen && (
         <div
           style={{
@@ -1142,7 +1142,7 @@ export default function AdminMenuPage() {
               </button>
             </form>
 
-            {/* Daftar Kategori Aktif (Bisa Edit & Hapus) */}
+            {/* Daftar Kategori (Bisa Edit & Hapus) */}
             <div
               style={{
                 display: "flex",
@@ -1297,7 +1297,7 @@ export default function AdminMenuPage() {
         </div>
       )}
 
-      {/* MODAL TAMBAH / EDIT MENU LENGKAP */}
+      {/* TAMBAH/EDIT MENU LENGKAP */}
       {isModalOpen && (
         <div
           style={{
@@ -1707,7 +1707,7 @@ export default function AdminMenuPage() {
                 onChange={(e) => setIsFavorite(e.target.checked)}
                 style={{ width: "16px", height: "16px", accentColor: "#5C3A21" }}
               />
-              <span>Tandai sebagai Menu Favorit / Rekomendasi Terlaris di Website</span>
+              <span>Tandai sebagai Menu Favorit / Rekomendasi Terlaris</span>
             </label>
 
             <div

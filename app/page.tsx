@@ -102,7 +102,6 @@ export default function Home() {
       try {
         await fetch("/api/auth/logout", { method: "POST" });
       } catch {
-        // Abaikan
       }
       setCurrentUser(null);
     }
@@ -114,7 +113,6 @@ export default function Home() {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
     } catch {
-      // Abaikan
     }
     localStorage.removeItem("soto_customer_user");
     sessionStorage.removeItem("soto_active_user");
@@ -141,7 +139,6 @@ export default function Home() {
           return;
         }
       } catch {
-        // Fallback localStorage
       }
       try {
         const saved = localStorage.getItem("soto_site_content");
@@ -155,7 +152,6 @@ export default function Home() {
           }
         }
       } catch {
-        // Abaikan
       }
     }
 
@@ -719,7 +715,7 @@ export default function Home() {
         {activePage === "lokasi" && <Location />}
       </div>
 
-      {/* FOOTER COKELAT ESPRESSO GELAP DENGAN LOGO SVG ASLI */}
+      {/* FOOTER */}
       <footer
         style={{
           backgroundColor: "#2A1A11",
@@ -739,7 +735,7 @@ export default function Home() {
             borderBottom: "1px solid rgba(239, 227, 200, 0.2)",
           }}
         >
-          {/* Kolom 1: Brand */}
+          {/* Brand */}
           <div>
             <h3
               style={{
@@ -777,7 +773,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Kolom 2: Tautan Cepat */}
+          {/* Tautan Cepat */}
           <div>
             <h4
               style={{
@@ -894,7 +890,7 @@ export default function Home() {
             </ul>
           </div>
 
-          {/* Kolom 3: Lokasi & Jam Layanan */}
+          {/* Lokasi & Jam Layanan */}
           <div>
             <h4
               style={{
@@ -958,7 +954,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Kolom 4: Media Sosial dengan Logo SVG Asli */}
+          {/* Media Sosial dengan Logo Asli */}
           <div>
             <h4
               style={{
