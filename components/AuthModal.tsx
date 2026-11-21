@@ -327,7 +327,7 @@ export function AuthModal({
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Contoh: gadinghol"
+                placeholder="Masukkan username atau nama lengkap"
                 style={{
                   width: "100%",
                   padding: "10px 14px",
@@ -354,14 +354,14 @@ export function AuthModal({
             >
               {mode === "login"
                 ? "Username atau Email"
-                : "Alamat Email / Username"}
+                : "Alamat Email"}
             </label>
             <input
-              type="text"
+              type="email"
               required
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="Masukkan username atau email"
+              placeholder="Masukkan email"
               style={{
                 width: "100%",
                 padding: "10px 14px",

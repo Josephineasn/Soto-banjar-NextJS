@@ -56,7 +56,6 @@ export default function Home() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [selectedMenu, setSelectedMenu] = useState<MenuItem | null>(null);
 
-  // State Dinamis untuk Header Menu & Footer dari Admin Content
   const [menuHeader, setMenuHeader] = useState({
     menuBadge: "Resep Warisan Asli Banjar",
     menuTitle: "Menu Pilihan Kami",
@@ -192,8 +191,25 @@ export default function Home() {
     const handleMenuUpdate = () => {
       void initFetch();
     };
+
+    const handleStorageSync = (e: StorageEvent) => {
+      if (e.key === "soto_menu_sync_ts") {
+        void initFetch();
+      }
+      if (e.key === "soto_site_content") {
+        void loadDynamicSiteContent();
+      }
+    };
+
+    const handleWindowFocus = () => {
+      void initFetch();
+      void loadDynamicSiteContent();
+    };
+
     window.addEventListener("soto-menu-updated", handleMenuUpdate);
     window.addEventListener("soto-content-updated", loadDynamicSiteContent);
+    window.addEventListener("storage", handleStorageSync);
+    window.addEventListener("focus", handleWindowFocus);
 
     return () => {
       isMounted = false;
@@ -202,6 +218,8 @@ export default function Home() {
         "soto-content-updated",
         loadDynamicSiteContent
       );
+      window.removeEventListener("storage", handleStorageSync);
+      window.removeEventListener("focus", handleWindowFocus);
     };
   }, []);
 
@@ -361,7 +379,7 @@ export default function Home() {
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="🔍 Cari menu soto, sate, minuman..."
+          placeholder="Cari menu soto, sate, minuman..."
           style={{
             padding: "11px 16px",
             borderRadius: "14px",
@@ -685,7 +703,7 @@ export default function Home() {
                   cursor: "pointer",
                 }}
               >
-                ← Kembali ke Tampilan Awal (Beranda)
+                Kembali ke Tampilan Awal (Beranda)
               </button>
             </div>
           </div>
@@ -956,7 +974,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Media Sosial dengan Logo Asli */}
+          {/* Media Sosial */}
           <div>
             <h4
               style={{

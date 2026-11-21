@@ -1,10 +1,10 @@
-generator client {
-  provider = "prisma-client-js"
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
-datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+generator client {
+  provider = "prisma-client-js"
 }
 
 model User {
@@ -80,15 +80,16 @@ model OrderItem {
 }
 
 model Review {
-  id        String   @id @default(cuid())
-  name      String
-  city      String   @default("Jakarta")
-  rating    Int      @default(5)
-  comment   String
-  reply     String?
-  createdAt DateTime @default(now())
-  menuId    Int?
-  Menu      Menu?    @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  id            String   @id @default(cuid())
+  name          String
+  city          String   @default("Jakarta")
+  rating        Int      @default(5)
+  comment       String
+  reply         String?
+  showOnWebsite Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  menuId        Int?
+  Menu          Menu?    @relation(fields: [menuId], references: [id], onDelete: Cascade)
 }
 
 model DeliveryArea {

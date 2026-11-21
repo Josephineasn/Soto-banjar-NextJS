@@ -8,17 +8,17 @@
   ],
   "items": {
     "1": {
-      "category": "hemat",
+      "category": "makanan",
       "rating": 4.8,
       "spiceLevel": "Tidak Pedas",
       "calories": 350,
       "ingredients": "Kayu Manis, Cengkeh, Kapulaga, Pala, Bawang Putih",
       "packaging": "Kotak makanan",
-      "isRecommended": true,
-      "isFavorite": true,
-      "recommended": true,
-      "bestSeller": true,
-      "isBestSeller": true
+      "isRecommended": false,
+      "isFavorite": false,
+      "recommended": false,
+      "bestSeller": false,
+      "isBestSeller": false
     },
     "2": {
       "category": "makanan",

@@ -8,29 +8,26 @@ interface MenuItem {
   category: string;
   price: number;
   rating?: number | string;
+  spicyLevel?: string;
   spiceLevel?: string;
   calories?: number | string;
   image?: string;
   description?: string;
-  ingredients?: string | string[];
   spices?: string | string[];
-  rempah?: string | string[];
+  ingredients?: string | string[];
+  packagingInfo?: string;
   packaging?: string;
-  kemasan?: string;
-  standardPackaging?: string;
+  popular?: boolean;
   isFavorite?: boolean;
   isRecommended?: boolean;
-  recommended?: boolean;
-  bestSeller?: boolean;
+  available?: boolean;
 }
 
 function checkIsRecommended(item: MenuItem): boolean {
-  return Boolean(
-    item.isRecommended ?? item.isFavorite ?? item.recommended ?? item.bestSeller
-  );
+  return Boolean(item.popular ?? item.isRecommended ?? item.isFavorite);
 }
 
-function formatIngredientsText(raw: unknown): string {
+function formatSpicesText(raw: unknown): string {
   if (!raw) return "";
   if (Array.isArray(raw)) {
     return raw
@@ -70,53 +67,52 @@ export default function AdminMenuPage() {
   ]);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Filter & Pencarian
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
 
-  // Kelola Kategori (Tambah, Edit, Hapus)
   const [isCatModalOpen, setIsCatModalOpen] = useState<boolean>(false);
   const [newCatInput, setNewCatInput] = useState<string>("");
-  const [editingCatOldName, setEditingCatOldName] = useState<string | null>(null);
+  const [editingCatOldName, setEditingCatOldName] = useState<string | null>(
+    null
+  );
   const [editingCatNewName, setEditingCatNewName] = useState<string>("");
 
-  // Modal Tambah / Edit Menu
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingMenu, setEditingMenu] = useState<MenuItem | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
 
-  // State Form Menu
   const [name, setName] = useState<string>("");
   const [category, setCategory] = useState<string>("makanan");
   const [price, setPrice] = useState<string>("35000");
-  const [rating, setRating] = useState<string>("4.8");
-  const [spiceLevel, setSpiceLevel] = useState<string>("Tidak Pedas");
+  const [rating, setRating] = useState<string>("5");
+  const [spicyLevel, setSpicyLevel] = useState<string>("Tidak Pedas");
   const [calories, setCalories] = useState<string>("350");
   const [image, setImage] = useState<string>("");
   const [description, setDescription] = useState<string>("");
-  const [ingredients, setIngredients] = useState<string>("");
-  const [packaging, setPackaging] = useState<string>(
-    "Wadah Food Grade Kedap Udara"
+  const [spices, setSpices] = useState<string>("");
+  const [packagingInfo, setPackagingInfo] = useState<string>(
+    "Kemasan thermal pouch tahan panas"
   );
-  const [isFavorite, setIsFavorite] = useState<boolean>(false);
+  const [popular, setPopular] = useState<boolean>(false);
 
   useEffect(() => {
+    let isMounted = true;
+
     async function loadInitialData() {
-      setLoading(true);
       try {
         const [menuRes, catRes] = await Promise.all([
           fetch("/api/menu", { cache: "no-store" }),
           fetch("/api/categories", { cache: "no-store" }),
         ]);
 
-        if (menuRes.ok) {
+        if (menuRes.ok && isMounted) {
           const menuData: unknown = await menuRes.json();
           if (Array.isArray(menuData)) {
             setMenus(menuData as MenuItem[]);
           }
         }
 
-        if (catRes.ok) {
+        if (catRes.ok && isMounted) {
           const catData: unknown = await catRes.json();
           if (Array.isArray(catData) && catData.length > 0) {
             setCategoryList(catData.map((c) => String(c).toLowerCase()));
@@ -125,14 +121,26 @@ export default function AdminMenuPage() {
       } catch (err) {
         console.error("Gagal memuat data menu & kategori:", err);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
 
     void loadInitialData();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  // Fungsi Tambah Kategori Baru
+  function notifyCustomerSync() {
+    window.dispatchEvent(new Event("soto-menu-updated"));
+    try {
+      localStorage.setItem("soto_menu_sync_ts", crypto.randomUUID());
+    } catch {}
+  }
+
   async function handleAddCategory(e: React.FormEvent) {
     e.preventDefault();
     const clean = newCatInput.trim().toLowerCase();
@@ -147,7 +155,7 @@ export default function AdminMenuPage() {
       if (res.ok) {
         const updatedCats = (await res.json()) as string[];
         setCategoryList(updatedCats);
-        window.dispatchEvent(new Event("soto-menu-updated"));
+        notifyCustomerSync();
       }
     } catch (err) {
       console.error("Gagal menambah kategori:", err);
@@ -157,7 +165,6 @@ export default function AdminMenuPage() {
     setSelectedCategory(clean);
   }
 
-  // Fungsi Simpan Edit Nama Kategori
   async function handleSaveEditCategory(oldName: string) {
     const cleanNew = editingCatNewName.trim().toLowerCase();
     if (!cleanNew || cleanNew === oldName) {
@@ -184,7 +191,7 @@ export default function AdminMenuPage() {
         if (selectedCategory === oldName) {
           setSelectedCategory(cleanNew);
         }
-        window.dispatchEvent(new Event("soto-menu-updated"));
+        notifyCustomerSync();
       }
     } catch (err) {
       console.error("Gagal mengubah kategori:", err);
@@ -194,7 +201,6 @@ export default function AdminMenuPage() {
     setEditingCatNewName("");
   }
 
-  // Fungsi Hapus Kategori
   async function handleDeleteCategory(catName: string) {
     if (
       !confirm(
@@ -222,7 +228,7 @@ export default function AdminMenuPage() {
         if (selectedCategory === catName) {
           setSelectedCategory("ALL");
         }
-        window.dispatchEvent(new Event("soto-menu-updated"));
+        notifyCustomerSync();
       }
     } catch (err) {
       console.error("Gagal menghapus kategori:", err);
@@ -236,14 +242,14 @@ export default function AdminMenuPage() {
       selectedCategory !== "ALL" ? selectedCategory.toLowerCase() : "makanan"
     );
     setPrice("35000");
-    setRating("4.9");
-    setSpiceLevel("Tidak Pedas");
+    setRating("5");
+    setSpicyLevel("Tidak Pedas");
     setCalories("350");
-    setImage("");
+    setImage("/images/sotobanjarotentik.jpg");
     setDescription("");
-    setIngredients("Kayu Manis, Kapulaga, Cengkeh, Bawang Merah Banjar");
-    setPackaging("Wadah Food Grade (Kuah Dipisah)");
-    setIsFavorite(false);
+    setSpices("Kayu manis, kapulaga, cengkih, pala");
+    setPackagingInfo("Kemasan thermal pouch tahan panas");
+    setPopular(false);
     setIsModalOpen(true);
   }
 
@@ -252,8 +258,8 @@ export default function AdminMenuPage() {
     setName(item.name || "");
     setCategory((item.category || "makanan").toLowerCase());
     setPrice(String(item.price ?? 0));
-    setRating(String(item.rating ?? "4.8"));
-    setSpiceLevel(item.spiceLevel || "Tidak Pedas");
+    setRating(String(item.rating ?? "5"));
+    setSpicyLevel(item.spicyLevel || item.spiceLevel || "Tidak Pedas");
     setCalories(
       String(item.calories ?? "350")
         .replace(/kkal/gi, "")
@@ -262,31 +268,29 @@ export default function AdminMenuPage() {
     setImage(item.image || "");
     setDescription(item.description || "");
 
-    const rawIng = item.ingredients ?? item.spices ?? item.rempah ?? "";
-    setIngredients(formatIngredientsText(rawIng));
+    const rawSpices = item.spices ?? item.ingredients ?? "";
+    setSpices(formatSpicesText(rawSpices));
 
     const rawPack =
+      item.packagingInfo ??
       item.packaging ??
-      item.kemasan ??
-      item.standardPackaging ??
-      "Kotak makanan";
-    setPackaging(String(rawPack));
+      "Kemasan thermal pouch tahan panas";
+    setPackagingInfo(String(rawPack));
 
-    setIsFavorite(checkIsRecommended(item));
+    setPopular(checkIsRecommended(item));
     setIsModalOpen(true);
   }
 
   async function handleToggleRecommendCard(item: MenuItem) {
-    const nextRec = !checkIsRecommended(item);
+    const nextPopular = !checkIsRecommended(item);
     setMenus((prev) =>
       prev.map((m) =>
         m.id === item.id
           ? {
               ...m,
-              isFavorite: nextRec,
-              isRecommended: nextRec,
-              recommended: nextRec,
-              bestSeller: nextRec,
+              popular: nextPopular,
+              isRecommended: nextPopular,
+              isFavorite: nextPopular,
             }
           : m
       )
@@ -297,13 +301,12 @@ export default function AdminMenuPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          isFavorite: nextRec,
-          isRecommended: nextRec,
-          recommended: nextRec,
-          bestSeller: nextRec,
+          popular: nextPopular,
+          isRecommended: nextPopular,
+          isFavorite: nextPopular,
         }),
       });
-      window.dispatchEvent(new Event("soto-menu-updated"));
+      notifyCustomerSync();
     } catch (err) {
       console.error("Gagal mengubah status rekomendasi:", err);
     }
@@ -315,28 +318,33 @@ export default function AdminMenuPage() {
 
     setSubmitting(true);
 
-    const cleanIngredients = ingredients
+    const cleanSpices = spices
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean)
       .join(", ");
 
+    const calNumber = Number(String(calories).replace(/[^0-9]/g, "")) || 350;
+    const formattedCalories = `${calNumber} kkal`;
+
     const payload = {
       name: name.trim(),
       category: category.toLowerCase(),
       price: Number(price) || 0,
-      rating: Number(rating) || 4.8,
-      spiceLevel: spiceLevel.trim() || "Tidak Pedas",
-      calories: Number(calories) || 0,
-      image: image.trim() || "/soto-banjar.jpg",
+      rating: Number(rating) || 5,
+      spicyLevel: spicyLevel.trim() || "Tidak Pedas",
+      spiceLevel: spicyLevel.trim() || "Tidak Pedas",
+      calories: formattedCalories,
+      image: image.trim() || "/images/sotobanjarotentik.jpg",
       description: description.trim(),
-      ingredients: cleanIngredients,
-      spices: cleanIngredients,
-      packaging: packaging.trim() || "Kotak makanan",
-      isFavorite,
-      isRecommended: isFavorite,
-      recommended: isFavorite,
-      bestSeller: isFavorite,
+      spices: cleanSpices,
+      ingredients: cleanSpices,
+      packagingInfo: packagingInfo.trim() || "Kemasan thermal pouch tahan panas",
+      packaging: packagingInfo.trim() || "Kemasan thermal pouch tahan panas",
+      popular,
+      isRecommended: popular,
+      isFavorite: popular,
+      available: true,
     };
 
     try {
@@ -348,7 +356,6 @@ export default function AdminMenuPage() {
         });
 
         if (res.ok) {
-          window.dispatchEvent(new Event("soto-menu-updated"));
           const updated = (await res.json()) as MenuItem;
           setMenus((prev) =>
             prev.map((m) =>
@@ -364,15 +371,12 @@ export default function AdminMenuPage() {
         });
 
         if (res.ok) {
-          window.dispatchEvent(new Event("soto-menu-updated"));
           const created = (await res.json()) as MenuItem;
           setMenus((prev) => [created, ...prev]);
         }
       }
 
-      // SINKRONISASI REAL-TIME KE CUSTOMER
-      window.dispatchEvent(new Event("soto-menu-updated"));
-
+      notifyCustomerSync();
       setIsModalOpen(false);
     } catch (err) {
       console.error("Gagal menyimpan menu:", err);
@@ -385,10 +389,10 @@ export default function AdminMenuPage() {
     if (!confirm(`Hapus menu "${menuName}" dari daftar sajian?`)) return;
 
     setMenus((prev) => prev.filter((m) => m.id !== id));
-    window.dispatchEvent(new Event("soto-menu-updated"));
 
     try {
       await fetch(`/api/menu/${id}`, { method: "DELETE" });
+      notifyCustomerSync();
     } catch (err) {
       console.error("Gagal menghapus menu:", err);
     }
@@ -424,7 +428,6 @@ export default function AdminMenuPage() {
         minHeight: "100vh",
       }}
     >
-      {/* HEADER HALAMAN */}
       <header
         style={{
           backgroundColor: "#FFFFFF",
@@ -477,7 +480,7 @@ export default function AdminMenuPage() {
               gap: "6px",
             }}
           >
-            🏷️ Kelola Kategori ({categoryList.length})
+            Kelola Kategori ({categoryList.length})
           </button>
 
           <button
@@ -498,7 +501,7 @@ export default function AdminMenuPage() {
               boxShadow: "0 6px 16px rgba(92, 58, 33, 0.25)",
             }}
           >
-            <span style={{ fontSize: "16px", lineHeight: 1 }}>＋</span> Tambah Menu Baru
+            <span style={{ fontSize: "16px", lineHeight: 1 }}>+</span> Tambah Menu Baru
           </button>
         </div>
       </header>
@@ -525,39 +528,20 @@ export default function AdminMenuPage() {
               borderRadius: "16px",
               padding: "18px 20px",
               border: "1.5px solid #E5DEC9",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
             }}
           >
-            <div>
-              <div style={{ fontSize: "12px", fontWeight: 800, color: "#8A6B47" }}>
-                Total Sajian Aktif
-              </div>
-              <div
-                style={{
-                  fontSize: "24px",
-                  fontWeight: 900,
-                  color: "#2A1A11",
-                  marginTop: "4px",
-                }}
-              >
-                {menus.length} <span style={{ fontSize: "13px", fontWeight: 700 }}>Menu</span>
-              </div>
+            <div style={{ fontSize: "12px", fontWeight: 800, color: "#8A6B47" }}>
+              Total Sajian Aktif
             </div>
             <div
               style={{
-                width: "44px",
-                height: "44px",
-                borderRadius: "12px",
-                backgroundColor: "#FEF3C7",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "20px",
+                fontSize: "24px",
+                fontWeight: 900,
+                color: "#2A1A11",
+                marginTop: "4px",
               }}
             >
-              🍲
+              {menus.length} <span style={{ fontSize: "13px", fontWeight: 700 }}>Menu</span>
             </div>
           </div>
 
@@ -567,40 +551,21 @@ export default function AdminMenuPage() {
               borderRadius: "16px",
               padding: "18px 20px",
               border: "1.5px solid #E5DEC9",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
             }}
           >
-            <div>
-              <div style={{ fontSize: "12px", fontWeight: 800, color: "#8A6B47" }}>
-                Menu Rekomendasi / Terlaris
-              </div>
-              <div
-                style={{
-                  fontSize: "24px",
-                  fontWeight: 900,
-                  color: "#B45309",
-                  marginTop: "4px",
-                }}
-              >
-                {recommendedCount}{" "}
-                <span style={{ fontSize: "13px", fontWeight: 700 }}>Rekomendasi</span>
-              </div>
+            <div style={{ fontSize: "12px", fontWeight: 800, color: "#8A6B47" }}>
+              Menu Rekomendasi / Terlaris
             </div>
             <div
               style={{
-                width: "44px",
-                height: "44px",
-                borderRadius: "12px",
-                backgroundColor: "#FDE68A",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "20px",
+                fontSize: "24px",
+                fontWeight: 900,
+                color: "#B45309",
+                marginTop: "4px",
               }}
             >
-              ⭐
+              {recommendedCount}{" "}
+              <span style={{ fontSize: "13px", fontWeight: 700 }}>Rekomendasi</span>
             </div>
           </div>
 
@@ -610,45 +575,26 @@ export default function AdminMenuPage() {
               borderRadius: "16px",
               padding: "18px 20px",
               border: "1.5px solid #E5DEC9",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
             }}
           >
-            <div>
-              <div style={{ fontSize: "12px", fontWeight: 800, color: "#8A6B47" }}>
-                Kategori Tersedia
-              </div>
-              <div
-                style={{
-                  fontSize: "24px",
-                  fontWeight: 900,
-                  color: "#166534",
-                  marginTop: "4px",
-                }}
-              >
-                {categoryList.length}{" "}
-                <span style={{ fontSize: "13px", fontWeight: 700 }}>Kategori</span>
-              </div>
+            <div style={{ fontSize: "12px", fontWeight: 800, color: "#8A6B47" }}>
+              Kategori Tersedia
             </div>
             <div
               style={{
-                width: "44px",
-                height: "44px",
-                borderRadius: "12px",
-                backgroundColor: "#DCFCE7",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "20px",
+                fontSize: "24px",
+                fontWeight: 900,
+                color: "#166534",
+                marginTop: "4px",
               }}
             >
-              🏷️
+              {categoryList.length}{" "}
+              <span style={{ fontSize: "13px", fontWeight: 700 }}>Kategori</span>
             </div>
           </div>
         </div>
 
-        {/* FILTER KATEGORI & PENCARIAN */}
+        {/* FILTER KATEGORI */}
         <div
           style={{
             backgroundColor: "#FFFFFF",
@@ -716,7 +662,7 @@ export default function AdminMenuPage() {
           <div style={{ position: "relative", minWidth: "250px", flex: "0 1 300px" }}>
             <input
               type="text"
-              placeholder="🔍 Cari nama menu atau deskripsi..."
+              placeholder="Cari nama menu atau deskripsi..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{
@@ -733,7 +679,7 @@ export default function AdminMenuPage() {
           </div>
         </div>
 
-        {/* GRID KARTU MENU */}
+        {/* KARTU MENU */}
         {loading ? (
           <div
             style={{
@@ -776,18 +722,19 @@ export default function AdminMenuPage() {
           >
             {filteredMenus.map((item) => {
               const isRec = checkIsRecommended(item);
-              const calText = String(item.calories ?? "350").includes("kkal")
+              const calText = String(item.calories ?? "350 kkal").includes("kkal")
                 ? String(item.calories)
                 : `${item.calories ?? 350} kkal`;
-              const ratingVal = item.rating ?? "4.8";
-              const ingText = formatIngredientsText(
-                item.ingredients ?? item.spices ?? item.rempah
+              const ratingVal = item.rating ?? "5";
+              const spicesText = formatSpicesText(
+                item.spices ?? item.ingredients
               );
               const packText =
+                item.packagingInfo ??
                 item.packaging ??
-                item.kemasan ??
-                item.standardPackaging ??
-                "Kotak makanan";
+                "Kemasan thermal pouch tahan panas";
+              const spicyText =
+                item.spicyLevel ?? item.spiceLevel ?? "Tidak Pedas";
 
               return (
                 <div
@@ -814,11 +761,11 @@ export default function AdminMenuPage() {
                       }}
                     >
                       <img
-                        src={item.image || "/soto-banjar.jpg"}
+                        src={item.image || "/images/sotobanjarotentik.jpg"}
                         alt={item.name}
                         onError={(e) => {
                           (e.currentTarget as HTMLImageElement).src =
-                            "https://images.unsplash.com/photo-1547592180-85f173990554?w=600&auto=format&fit=crop&q=60";
+                            "/images/sotobanjarotentik.jpg";
                         }}
                         style={{
                           width: "100%",
@@ -847,7 +794,6 @@ export default function AdminMenuPage() {
                       <button
                         type="button"
                         onClick={() => void handleToggleRecommendCard(item)}
-                        title="Klik untuk mengubah status Rekomendasi / Terlaris di Web Customer"
                         style={{
                           position: "absolute",
                           top: "12px",
@@ -867,7 +813,7 @@ export default function AdminMenuPage() {
                           boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
                         }}
                       >
-                        {isRec ? "★ Rekomendasi" : "☆ Jadikan Rekomendasi"}
+                        {isRec ? "Rekomendasi" : "Jadikan Rekomendasi"}
                       </button>
                     </div>
 
@@ -902,7 +848,7 @@ export default function AdminMenuPage() {
                             whiteSpace: "nowrap",
                           }}
                         >
-                          ⭐ {ratingVal}
+                          Rating {ratingVal}
                         </span>
                       </div>
 
@@ -950,9 +896,9 @@ export default function AdminMenuPage() {
                       >
                         <div>
                           <strong style={{ color: "#734F31" }}>
-                            🌿 Racikan Rempah:{" "}
+                            Racikan Rempah:{" "}
                           </strong>
-                          <span>{ingText || "Rempah pilihan khas Banjar"}</span>
+                          <span>{spicesText || "Rempah pilihan khas Banjar"}</span>
                         </div>
                         <div
                           style={{
@@ -960,7 +906,7 @@ export default function AdminMenuPage() {
                             paddingTop: "4px",
                           }}
                         >
-                          <strong style={{ color: "#734F31" }}>📦 Kemasan: </strong>
+                          <strong style={{ color: "#734F31" }}>Kemasan: </strong>
                           <span>{packText}</span>
                         </div>
                       </div>
@@ -977,7 +923,7 @@ export default function AdminMenuPage() {
                             fontWeight: 800,
                           }}
                         >
-                          🌶️ {item.spiceLevel || "Tidak Pedas"}
+                          {spicyText}
                         </span>
                         <span
                           style={{
@@ -990,7 +936,7 @@ export default function AdminMenuPage() {
                             fontWeight: 800,
                           }}
                         >
-                          🔥 {calText}
+                          {calText}
                         </span>
                       </div>
                     </div>
@@ -1019,7 +965,7 @@ export default function AdminMenuPage() {
                         cursor: "pointer",
                       }}
                     >
-                      ✎ Edit Menu
+                      Edit Menu
                     </button>
                     <button
                       type="button"
@@ -1045,7 +991,7 @@ export default function AdminMenuPage() {
         )}
       </div>
 
-      {/* KELOLA KATEGORI (TAMBAH, EDIT, HAPUS) */}
+      {/* MODAL KELOLA KATEGORI */}
       {isCatModalOpen && (
         <div
           style={{
@@ -1093,10 +1039,10 @@ export default function AdminMenuPage() {
                     color: "#2A1A11",
                   }}
                 >
-                  🏷️ Kelola Kategori Menu
+                  Kelola Kategori Menu
                 </h3>
                 <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#6D4C30" }}>
-                  Kategori baru otomatis muncul di sebelah kanan Cemilan (Admin &amp; Customer).
+                  Kategori baru otomatis muncul di Admin &amp; Customer.
                 </p>
               </div>
               <button
@@ -1112,11 +1058,10 @@ export default function AdminMenuPage() {
                   fontWeight: 900,
                 }}
               >
-                ✕
+                X
               </button>
             </div>
 
-            {/* Form Tambah Kategori */}
             <form
               onSubmit={(e) => void handleAddCategory(e)}
               style={{ display: "flex", gap: "8px" }}
@@ -1125,7 +1070,7 @@ export default function AdminMenuPage() {
                 type="text"
                 value={newCatInput}
                 onChange={(e) => setNewCatInput(e.target.value)}
-                placeholder="Ketik kategori baru (misal: Paket Hemat)..."
+                placeholder="Ketik kategori baru..."
                 style={{
                   flex: 1,
                   padding: "10px 12px",
@@ -1153,7 +1098,6 @@ export default function AdminMenuPage() {
               </button>
             </form>
 
-            {/* Daftar Kategori (Bisa Edit & Hapus) */}
             <div
               style={{
                 display: "flex",
@@ -1279,7 +1223,7 @@ export default function AdminMenuPage() {
                               cursor: "pointer",
                             }}
                           >
-                            ✎ Edit
+                            Edit
                           </button>
                           <button
                             type="button"
@@ -1308,7 +1252,7 @@ export default function AdminMenuPage() {
         </div>
       )}
 
-      {/* TAMBAH/EDIT MENU LENGKAP */}
+      {/* MODAL TAMBAH / EDIT MENU */}
       {isModalOpen && (
         <div
           style={{
@@ -1360,7 +1304,7 @@ export default function AdminMenuPage() {
               >
                 {editingMenu
                   ? `Edit Sajian: ${editingMenu.name}`
-                  : "✎ Tambah Menu Baru"}
+                  : "Tambah Menu Baru"}
               </h2>
               <button
                 type="button"
@@ -1375,7 +1319,7 @@ export default function AdminMenuPage() {
                   fontWeight: 900,
                 }}
               >
-                ✕
+                X
               </button>
             </div>
 
@@ -1402,7 +1346,6 @@ export default function AdminMenuPage() {
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Contoh: Lempeng Pisang / Soto Banjar"
                   required
                   style={{
                     width: "100%",
@@ -1495,7 +1438,7 @@ export default function AdminMenuPage() {
                     marginBottom: "5px",
                   }}
                 >
-                  Rating Menu (★)
+                  Rating Menu
                 </label>
                 <input
                   type="number"
@@ -1504,7 +1447,6 @@ export default function AdminMenuPage() {
                   max="5"
                   value={rating}
                   onChange={(e) => setRating(e.target.value)}
-                  placeholder="4.8"
                   style={{
                     width: "100%",
                     padding: "10px 12px",
@@ -1532,7 +1474,6 @@ export default function AdminMenuPage() {
                   type="number"
                   value={calories}
                   onChange={(e) => setCalories(e.target.value)}
-                  placeholder="300"
                   style={{
                     width: "100%",
                     padding: "10px 12px",
@@ -1554,11 +1495,11 @@ export default function AdminMenuPage() {
                     marginBottom: "5px",
                   }}
                 >
-                  Tingkat Kepedasan
+                  Tingkat Kepedasan (spicyLevel)
                 </label>
                 <select
-                  value={spiceLevel}
-                  onChange={(e) => setSpiceLevel(e.target.value)}
+                  value={spicyLevel}
+                  onChange={(e) => setSpicyLevel(e.target.value)}
                   style={{
                     width: "100%",
                     padding: "10px 12px",
@@ -1572,7 +1513,8 @@ export default function AdminMenuPage() {
                   <option value="Tidak Pedas">Tidak Pedas</option>
                   <option value="Sedang">Sedang</option>
                   <option value="Pedas">Pedas</option>
-                  <option value="Manis / Gurih">Manis / Gurih</option>
+                  <option value="Manis Gurih">Manis Gurih</option>
+                  <option value="Gurih">Gurih</option>
                 </select>
               </div>
             </div>
@@ -1598,13 +1540,13 @@ export default function AdminMenuPage() {
                     marginBottom: "5px",
                   }}
                 >
-                  🌿 Racikan Rempah Khas / Komposisi (Pisahkan Koma)
+                  Racikan Rempah (spices)
                 </label>
                 <input
                   type="text"
-                  value={ingredients}
-                  onChange={(e) => setIngredients(e.target.value)}
-                  placeholder="Contoh: Pisang, Tepung Terigu, Gula"
+                  value={spices}
+                  onChange={(e) => setSpices(e.target.value)}
+                  placeholder="Kayu manis, kapulaga, cengkih, pala"
                   style={{
                     width: "100%",
                     padding: "9px 12px",
@@ -1626,13 +1568,13 @@ export default function AdminMenuPage() {
                     marginBottom: "5px",
                   }}
                 >
-                  📦 Standar Kemasan Pengiriman
+                  Standar Kemasan (packagingInfo)
                 </label>
                 <input
                   type="text"
-                  value={packaging}
-                  onChange={(e) => setPackaging(e.target.value)}
-                  placeholder="Contoh: Kotak makanan / Wadah Kedap"
+                  value={packagingInfo}
+                  onChange={(e) => setPackagingInfo(e.target.value)}
+                  placeholder="Kemasan thermal pouch tahan panas"
                   style={{
                     width: "100%",
                     padding: "9px 12px",
@@ -1655,13 +1597,13 @@ export default function AdminMenuPage() {
                   marginBottom: "5px",
                 }}
               >
-                URL Gambar Foto Menu
+                Path Gambar Lokal (/images/...)
               </label>
               <input
                 type="text"
                 value={image}
                 onChange={(e) => setImage(e.target.value)}
-                placeholder="https://..."
+                placeholder="/images/sotobanjarotentik.jpg"
                 style={{
                   width: "100%",
                   padding: "10px 12px",
@@ -1689,7 +1631,6 @@ export default function AdminMenuPage() {
                 rows={3}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Hidangan khas Banjar berbahan..."
                 style={{
                   width: "100%",
                   padding: "10px 12px",
@@ -1714,11 +1655,11 @@ export default function AdminMenuPage() {
             >
               <input
                 type="checkbox"
-                checked={isFavorite}
-                onChange={(e) => setIsFavorite(e.target.checked)}
+                checked={popular}
+                onChange={(e) => setPopular(e.target.checked)}
                 style={{ width: "16px", height: "16px", accentColor: "#5C3A21" }}
               />
-              <span>Tandai sebagai Menu Favorit / Rekomendasi Terlaris</span>
+              <span>Tandai sebagai Menu Populer / Rekomendasi (popular)</span>
             </label>
 
             <div

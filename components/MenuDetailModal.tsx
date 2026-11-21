@@ -7,15 +7,21 @@ interface MenuDetailModalProps {
     onAddToCart: (item: MenuItem) => void;
 }
 
-export default function MenuDetailModal({
+    export default function MenuDetailModal({
     item,
     onClose,
     onAddToCart,
     }: MenuDetailModalProps) {
     if (!item) return null;
 
-    // Cek stok
     const isAvailable = item.available !== false;
+
+    const extendedItem = item as MenuItem & {
+        spicyLevel?: string;
+        spiceLevel?: string;
+    };
+    const spiceText =
+        extendedItem.spicyLevel || extendedItem.spiceLevel || "Tidak Pedas";
 
     return (
         <div
@@ -68,7 +74,7 @@ export default function MenuDetailModal({
                     fontWeight: "bold",
                 }}
                 >
-                ❌ Sold Out
+                Sold Out
                 </span>
             ) : item.popular ? (
                 <span
@@ -85,11 +91,11 @@ export default function MenuDetailModal({
                     textTransform: "uppercase",
                 }}
                 >
-                🔥 Popular
+                Popular
                 </span>
             ) : null}
 
-            {/* Tombol */}
+            {/* Tombol Tutup */}
             <button
                 onClick={onClose}
                 style={{
@@ -113,7 +119,14 @@ export default function MenuDetailModal({
 
             {/* Detail */}
             <div style={{ padding: "18px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+            <div
+                style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "6px",
+                }}
+            >
                 <span
                 style={{
                     fontSize: "10px",
@@ -127,20 +140,36 @@ export default function MenuDetailModal({
                 >
                 {item.category}
                 </span>
-                <span style={{ fontSize: "12px", fontWeight: "bold", color: "#44403c" }}>
-                ⭐ {item.rating} • {item.calories || "350 kkal"}
+                <span
+                style={{ fontSize: "12px", fontWeight: "bold", color: "#44403c" }}
+                >
+                ★ {item.rating} • {item.calories || "350 kkal"}
                 </span>
             </div>
 
-            <h3 style={{ margin: "6px 0", fontSize: "19px", color: isAvailable ? "#1c1917" : "#78716c", fontWeight: "800" }}>
+            <h3
+                style={{
+                margin: "6px 0",
+                fontSize: "19px",
+                color: isAvailable ? "#1c1917" : "#78716c",
+                fontWeight: "800",
+                }}
+            >
                 {item.name}
             </h3>
 
-            <p style={{ fontSize: "12px", color: "#78716c", margin: "0 0 14px", lineHeight: "1.5" }}>
+            <p
+                style={{
+                fontSize: "12px",
+                color: "#78716c",
+                margin: "0 0 14px",
+                lineHeight: "1.5",
+                }}
+            >
                 {item.description}
             </p>
 
-            {/* Rempah & Info Packaging */}
+            {/* Rempah, Tingkat Kepedasan & Info Packaging */}
             <div
                 style={{
                 background: "#fffbeb",
@@ -153,8 +182,14 @@ export default function MenuDetailModal({
                 }}
             >
                 <div style={{ marginBottom: "6px" }}>
-                <span style={{ fontWeight: "bold", color: "#78350f", display: "block" }}>
-                    🌿 Racikan Rempah Khas:
+                <span
+                    style={{
+                    fontWeight: "bold",
+                    color: "#78350f",
+                    display: "block",
+                    }}
+                >
+                    Racikan Rempah Khas:
                 </span>
                 <span style={{ color: "#ea580c", fontWeight: "600" }}>
                     {Array.isArray(item.spices)
@@ -165,17 +200,69 @@ export default function MenuDetailModal({
                 </span>
                 </div>
 
-                <div style={{ borderTop: "1px dashed #fcd34d", paddingTop: "6px" }}>
-                <span style={{ fontWeight: "bold", color: "#78350f" }}>📦 Standar Kemasan: </span>
-                <span style={{ color: "#451a03" }}>{item.packagingInfo || "Kemasan pouch tahan panas & anti-tumpah"}</span>
+                <div
+                style={{
+                    borderTop: "1px dashed #fcd34d",
+                    paddingTop: "6px",
+                    marginBottom: "6px",
+                }}
+                >
+                <span style={{ fontWeight: "bold", color: "#78350f" }}>
+                    Tingkat Kepedasan / Rasa:{" "}
+                </span>
+                <span
+                    style={{
+                    background: "#ffedd5",
+                    color: "#c2410c",
+                    padding: "2px 8px",
+                    borderRadius: "6px",
+                    fontWeight: "700",
+                    }}
+                >
+                    {spiceText}
+                </span>
+                </div>
+
+                <div
+                style={{ borderTop: "1px dashed #fcd34d", paddingTop: "6px" }}
+                >
+                <span style={{ fontWeight: "bold", color: "#78350f" }}>
+                    Standar Kemasan:{" "}
+                </span>
+                <span style={{ color: "#451a03" }}>
+                    {item.packagingInfo ||
+                    "Kemasan pouch tahan panas & anti-tumpah"}
+                </span>
                 </div>
             </div>
 
             {/* Harga & Tombol Tambah */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #fef3c7", paddingTop: "12px" }}>
+            <div
+                style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                borderTop: "1px solid #fef3c7",
+                paddingTop: "12px",
+                }}
+            >
                 <div>
-                <span style={{ fontSize: "10px", color: "#a8a29e", display: "block", fontWeight: "bold" }}>HARGA PORSI</span>
-                <strong style={{ fontSize: "19px", color: isAvailable ? "#ea580c" : "#78716c" }}>
+                <span
+                    style={{
+                    fontSize: "10px",
+                    color: "#a8a29e",
+                    display: "block",
+                    fontWeight: "bold",
+                    }}
+                >
+                    HARGA PORSI
+                </span>
+                <strong
+                    style={{
+                    fontSize: "19px",
+                    color: isAvailable ? "#ea580c" : "#78716c",
+                    }}
+                >
                     Rp {item.price.toLocaleString("id-ID")}
                 </strong>
                 </div>
@@ -189,7 +276,9 @@ export default function MenuDetailModal({
                     }
                 }}
                 style={{
-                    background: isAvailable ? "linear-gradient(90deg, #ea580c, #f59e0b)" : "#d6d3d1",
+                    background: isAvailable
+                    ? "linear-gradient(90deg, #ea580c, #f59e0b)"
+                    : "#d6d3d1",
                     color: isAvailable ? "#ffffff" : "#78716c",
                     border: "none",
                     padding: "10px 20px",
@@ -197,7 +286,9 @@ export default function MenuDetailModal({
                     fontWeight: "bold",
                     fontSize: "13px",
                     cursor: isAvailable ? "pointer" : "not-allowed",
-                    boxShadow: isAvailable ? "0 3px 8px rgba(234,88,12,0.25)" : "none",
+                    boxShadow: isAvailable
+                    ? "0 3px 8px rgba(234,88,12,0.25)"
+                    : "none",
                 }}
                 >
                 {isAvailable ? "+ Masukkan Keranjang" : "Menu Habis"}
