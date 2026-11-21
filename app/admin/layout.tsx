@@ -1,21 +1,78 @@
-import React from "react";
+"use client";
+
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+  const isLoginPage = pathname === "/admin/login";
+  const [authorized, setAuthorized] = useState<boolean>(false);
+
   const adminNavItems = [
-    { href: "/admin", label: "Dashboard"},
-    { href: "/admin/menu", label: "Kelola Menu"},
-    { href: "/admin/orders", label: "Pesanan Masuk"},
-    { href: "/admin/omset", label: "Rincian Omset"},
-    { href: "/admin/ongkir", label: "Kelola Ongkir & Wilayah"},
-    { href: "/admin/reviews", label: "Kelola Ulasan"},
-    { href: "/admin/content", label: "Edit Header & Konten"},
-    { href: "/admin/login-history", label: "Riwayat Login"},
+    { href: "/admin", label: "Dashboard" },
+    { href: "/admin/menu", label: "Kelola Menu" },
+    { href: "/admin/orders", label: "Pesanan Masuk" },
+    { href: "/admin/omset", label: "Rincian Omset" },
+    { href: "/admin/ongkir", label: "Kelola Ongkir & Wilayah" },
+    { href: "/admin/reviews", label: "Kelola Ulasan" },
+    { href: "/admin/content", label: "Edit Header & Konten" },
+    { href: "/admin/login-history", label: "Riwayat Login" },
   ];
+
+  useEffect(() => {
+    let active = true;
+
+    const verifyAuth = async () => {
+      await Promise.resolve();
+      if (!active) return;
+
+      if (isLoginPage) {
+        setAuthorized(true);
+        return;
+      }
+
+      const raw = localStorage.getItem("soto_admin_auth");
+      if (!raw) {
+        window.location.replace("/admin/login");
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed?.role === "ADMIN") {
+          setAuthorized(true);
+        } else {
+          window.location.replace("/admin/login");
+        }
+      } catch {
+        window.location.replace("/admin/login");
+      }
+    };
+
+    void verifyAuth();
+
+    return () => {
+      active = false;
+    };
+  }, [isLoginPage]);
+
+  const handleLogoutAdmin = () => {
+    localStorage.removeItem("soto_admin_auth");
+    window.location.replace("/admin/login");
+  };
+
+  if (isLoginPage) {
+    return <>{children}</>;
+  }
+
+  if (!authorized) {
+    return null;
+  }
 
   return (
     <div
@@ -55,21 +112,18 @@ export default function AdminLayout({
               paddingLeft: "8px",
             }}
           >
-            <div
+            <img
+              src="/logo.jpeg"
+              alt="Logo Soto Banjar"
               style={{
-                width: "38px",
-                height: "38px",
+                width: "40px",
+                height: "40px",
                 borderRadius: "10px",
-                backgroundColor: "#EFE3C8",
-                color: "#2A1A11",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 900,
+                objectFit: "cover",
+                border: "1.5px solid #EFE3C8",
+                flexShrink: 0,
               }}
-            >
-              SB
-            </div>
+            />
             <div>
               <div style={{ fontSize: "16px", fontWeight: 900, color: "#FFFFFF" }}>
                 Soto Banjar
@@ -90,33 +144,38 @@ export default function AdminLayout({
           </div>
 
           <nav style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-            {adminNavItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  padding: "11px 14px",
-                  borderRadius: "10px",
-                  backgroundColor: "transparent",
-                  color: "#D5C5B3",
-                  fontSize: "13.5px",
-                  fontWeight: 600,
-                  textDecoration: "none",
-                }}
-              >
-                <span>{item.label}</span>
-              </Link>
-            ))}
+            {adminNavItems.map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    padding: "11px 14px",
+                    borderRadius: "10px",
+                    backgroundColor: isActive ? "#4A3222" : "transparent",
+                    color: isActive ? "#EFE3C8" : "#D5C5B3",
+                    fontSize: "13.5px",
+                    fontWeight: isActive ? 800 : 600,
+                    textDecoration: "none",
+                  }}
+                >
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
           </nav>
         </div>
 
         <div>
-          <Link
-            href="/"
+          <button
+            type="button"
+            onClick={handleLogoutAdmin}
             style={{
+              width: "100%",
               display: "block",
               textAlign: "center",
               padding: "10px",
@@ -125,11 +184,12 @@ export default function AdminLayout({
               color: "#FCA5A5",
               fontSize: "12px",
               fontWeight: 800,
-              textDecoration: "none",
+              border: "none",
+              cursor: "pointer",
             }}
           >
-            ← Keluar ke Toko Utama
-          </Link>
+            ← Keluar ke Login Admin
+          </button>
         </div>
       </aside>
 
