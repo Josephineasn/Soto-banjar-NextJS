@@ -91,6 +91,7 @@ export default function Home() {
     copyright: "© 2026 Soto Banjar Selera Nusantara. All rights reserved.",
   });
 
+  // Inisialisasi sesi login tab aktif saat halaman pertama dibuka
   useEffect(() => {
     async function initAuthSession() {
       localStorage.removeItem("soto_customer_user");
@@ -118,6 +119,7 @@ export default function Home() {
     void initAuthSession();
   }, []);
 
+  // Logout akun customer dan bersihkan keranjang belanja
   async function handleLogout() {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
@@ -128,6 +130,7 @@ export default function Home() {
     setCart([]);
   }
 
+  // Memuat katalog menu, daftar kategori, dan konten dinamis dari server serta menyinkronkan update admin
   useEffect(() => {
     let isMounted = true;
 
@@ -234,6 +237,7 @@ export default function Home() {
     };
   }, []);
 
+  // Menyusun daftar tab kategori dari server
   const categories = useMemo(() => {
     const cleanServer = serverCategories.filter(
       (c) => Boolean(c) && c !== "semua" && c !== "makanan ringan"
@@ -248,11 +252,22 @@ export default function Home() {
     ];
   }, [serverCategories]);
 
-  function resetExtraFilters() {
+  // Mengecek apakah sedang ada filter
+  const hasActiveFilter =
+    category.toLowerCase() !== "semua" ||
+    priceSort !== "default" ||
+    spicyFilter.toLowerCase() !== "semua" ||
+    searchQuery.trim() !== "";
+
+  // Mengembalikan semua filter (kategori, pencarian, urutan harga, level pedas) ke kondisi awal
+  function resetAllFilters() {
+    setCategory("semua");
+    setSearchQuery("");
     setPriceSort("default");
     setSpicyFilter("semua");
   }
 
+  // Menyaring dan mengurutkan menu sesuai kategori, pencarian, level pedas, dan urutan harga
   const filteredMenus = useMemo(() => {
     const filtered = menus.filter((menu) => {
       const menuCat = String(menu.category || "").trim().toLowerCase();
@@ -291,7 +306,6 @@ export default function Home() {
     }
     return filtered;
   }, [menus, category, searchQuery, priceSort, spicyFilter]);
-  // === [AKHIR DIGANTI] ===
 
   function addToCartOnly(item: MenuItem) {
     if (!currentUser) {
@@ -438,6 +452,7 @@ export default function Home() {
         />
       </div>
 
+      {/* Tab kategori menu */}
       <div
         style={{
           display: "flex",
@@ -481,6 +496,7 @@ export default function Home() {
         })}
       </div>
 
+      {/* filter urutan harga, level pedas, dan tombol Reset Filter */}
       <div
         style={{
           backgroundColor: "#EFE3C8",
@@ -580,19 +596,21 @@ export default function Home() {
 
           <button
             type="button"
-            onClick={resetExtraFilters}
+            onClick={resetAllFilters}
+            disabled={!hasActiveFilter}
             style={{
-              padding: "7px 12px",
+              padding: "7px 14px",
               borderRadius: "20px",
               fontSize: "12px",
               fontWeight: 800,
-              cursor: "pointer",
-              border: "1.5px solid #8A6B47",
-              backgroundColor: "transparent",
-              color: "#432818",
+              cursor: hasActiveFilter ? "pointer" : "default",
+              border: "1.5px solid #2A1A11",
+              backgroundColor: hasActiveFilter ? "#2A1A11" : "transparent",
+              color: hasActiveFilter ? "#EFE3C8" : "#6D4C30",
+              opacity: hasActiveFilter ? 1 : 0.65,
             }}
           >
-            Reset
+            Reset Filter
           </button>
         </div>
       </div>
@@ -626,14 +644,37 @@ export default function Home() {
       ) : filteredMenus.length === 0 ? (
         <div
           style={{
-            padding: "60px 0",
+            padding: "50px 20px",
             textAlign: "center",
             color: "#432818",
             fontSize: "15px",
             fontWeight: "600",
+            backgroundColor: "#FFFFFF",
+            borderRadius: "18px",
+            border: "1.5px dashed #8A6B47",
           }}
         >
-          {`Pencarian "${searchQuery}" tidak ditemukan pada kategori atau filter ini.`}
+          <p style={{ margin: "0 0 14px" }}>
+            {searchQuery.trim()
+              ? `Pencarian "${searchQuery}" tidak ditemukan pada kategori atau filter ini.`
+              : "Tidak ada menu yang cocok dengan filter yang dipilih."}
+          </p>
+          <button
+            type="button"
+            onClick={resetAllFilters}
+            style={{
+              padding: "9px 18px",
+              borderRadius: "999px",
+              border: "none",
+              backgroundColor: "#2A1A11",
+              color: "#EFE3C8",
+              fontSize: "12.5px",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            Reset Semua Filter
+          </button>
         </div>
       ) : (
         <div
@@ -1241,7 +1282,9 @@ export default function Home() {
               </a>
 
               <a
-                href={`https://wa.me/${footerInfo.whatsapp.replace(/[^0-9]/g, "").replace(/^0/, "62")}`}
+                href={`https://wa.me/${footerInfo.whatsapp
+                  .replace(/[^0-9]/g, "")
+                  .replace(/^0/, "62")}`}
                 target="_blank"
                 rel="noreferrer"
                 style={{

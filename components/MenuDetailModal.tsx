@@ -17,6 +17,7 @@ type DetailMenuWithBadge = MenuItem & {
 
 const MENU_BADGE_MAP_KEY = "soto_menu_badge_map";
 
+// Palet warna badge pada modal detail menu
 const MODAL_BADGE_PALETTE: Record<string, { background: string; color: string }> = {
     amber: { background: "#D97706", color: "#FFFFFF" },
     red: { background: "#DC2626", color: "#FFFFFF" },
@@ -50,6 +51,7 @@ function isDetailSoldOut(badgeText: string): boolean {
     return n === "sold out" || n === "habis";
 }
 
+// Menentukan warna background dan teks badge
 function getDetailBadgeStyle(
     badgeText: string,
     badgeColor?: string | null
@@ -95,6 +97,7 @@ export default function MenuDetailModal({
     const activeBadgeColor =
         extendedItem.badgeColor ?? savedBadgeEntry?.badgeColor ?? "amber";
 
+    // Menentukan status ketersediaan menu dan warna badge aktif
     const isAvailable =
         item.available !== false && !isDetailSoldOut(activeBadge);
     const badgeColors = getDetailBadgeStyle(activeBadge, activeBadgeColor);
@@ -104,30 +107,43 @@ export default function MenuDetailModal({
 
     return (
         <div
+            onClick={onClose}
             style={{
                 position: "fixed",
                 inset: 0,
-                backgroundColor: "rgba(0,0,0,0.5)",
+                backgroundColor: "rgba(0,0,0,0.6)",
                 display: "flex",
                 justifyContent: "center",
                 alignItems: "center",
                 padding: "16px",
-                zIndex: 60,
+                zIndex: 1000,
+                overflowY: "auto",
             }}
         >
             <div
+                onClick={(e) => e.stopPropagation()}
                 style={{
                     background: "#ffffff",
                     borderRadius: "20px",
-                    maxWidth: "430px",
+                    maxWidth: "440px",
                     width: "100%",
+                    maxHeight: "calc(100vh - 32px)",
+                    display: "flex",
+                    flexDirection: "column",
                     overflow: "hidden",
                     border: "2px solid #f59e0b",
-                    boxShadow: "0 10px 25px rgba(0,0,0,0.18)",
+                    boxShadow: "0 16px 36px rgba(0,0,0,0.28)",
+                    margin: "auto",
                 }}
             >
                 {/* Header */}
-                <div style={{ position: "relative", height: "190px" }}>
+                <div
+                    style={{
+                        position: "relative",
+                        height: "clamp(140px, 24vh, 195px)",
+                        flexShrink: 0,
+                    }}
+                >
                     <img
                         src={item.image}
                         alt={item.name}
@@ -135,6 +151,7 @@ export default function MenuDetailModal({
                             width: "100%",
                             height: "100%",
                             objectFit: "cover",
+                            display: "block",
                             filter: isAvailable ? "none" : "grayscale(85%)",
                         }}
                     />
@@ -160,33 +177,45 @@ export default function MenuDetailModal({
                     ) : null}
 
                     <button
+                        type="button"
                         onClick={onClose}
+                        aria-label="Tutup detail menu"
                         style={{
                             position: "absolute",
                             top: "10px",
                             right: "10px",
-                            background: "rgba(0,0,0,0.6)",
+                            background: "rgba(0,0,0,0.65)",
                             color: "#ffffff",
                             border: "none",
                             borderRadius: "50%",
-                            width: "30px",
-                            height: "30px",
+                            width: "32px",
+                            height: "32px",
                             cursor: "pointer",
                             fontWeight: "bold",
                             fontSize: "14px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
                         }}
                     >
                         ✕
                     </button>
                 </div>
 
-                <div style={{ padding: "18px" }}>
+                <div
+                    style={{
+                        padding: "16px 18px 18px",
+                        overflowY: "auto",
+                        flex: 1,
+                    }}
+                >
                     <div
                         style={{
                             display: "flex",
                             justifyContent: "space-between",
                             alignItems: "center",
                             marginBottom: "6px",
+                            gap: "8px",
                         }}
                     >
                         <span
@@ -222,7 +251,7 @@ export default function MenuDetailModal({
 
                     <p
                         style={{
-                            fontSize: "12px",
+                            fontSize: "12.5px",
                             color: "#78716c",
                             margin: "0 0 14px",
                             lineHeight: "1.5",
@@ -236,9 +265,9 @@ export default function MenuDetailModal({
                             background: "#fffbeb",
                             padding: "12px",
                             borderRadius: "10px",
-                            marginBottom: "16px",
+                            marginBottom: "14px",
                             border: "1px solid #fed7aa",
-                            fontSize: "11px",
+                            fontSize: "11.5px",
                             lineHeight: "1.5",
                         }}
                     >
@@ -304,6 +333,8 @@ export default function MenuDetailModal({
                             alignItems: "center",
                             borderTop: "1px solid #fef3c7",
                             paddingTop: "12px",
+                            gap: "12px",
+                            flexWrap: "wrap",
                         }}
                     >
                         <div>
@@ -328,6 +359,7 @@ export default function MenuDetailModal({
                         </div>
 
                         <button
+                            type="button"
                             disabled={!isAvailable}
                             onClick={() => {
                                 if (isAvailable) {
@@ -341,7 +373,7 @@ export default function MenuDetailModal({
                                     : "#d6d3d1",
                                 color: isAvailable ? "#ffffff" : "#78716c",
                                 border: "none",
-                                padding: "10px 20px",
+                                padding: "10px 18px",
                                 borderRadius: "12px",
                                 fontWeight: "bold",
                                 fontSize: "13px",

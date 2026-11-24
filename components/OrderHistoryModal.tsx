@@ -67,6 +67,33 @@ interface OrderHistoryModalProps {
 
 type OrderStatusTab = "SEMUA" | "PENDING" | "DIPROSES" | "DIKIRIM" | "SELESAI";
 
+const CUSTOMER_CONFIRMED_STORAGE_KEY = "soto_customer_confirmed_orders";
+
+function readCustomerConfirmedOrders(): Set<string> {
+  if (typeof window === "undefined") return new Set<string>();
+  try {
+    const raw = window.localStorage.getItem(CUSTOMER_CONFIRMED_STORAGE_KEY);
+    if (!raw) return new Set<string>();
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return new Set(parsed.map((x) => String(x).trim().toUpperCase()));
+    }
+  } catch {}
+  return new Set<string>();
+}
+
+function saveCustomerConfirmedOrder(orderKey: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const current = readCustomerConfirmedOrders();
+    current.add(orderKey.trim().toUpperCase());
+    window.localStorage.setItem(
+      CUSTOMER_CONFIRMED_STORAGE_KEY,
+      JSON.stringify(Array.from(current))
+    );
+  } catch {}
+}
+
 function formatOrderDate(raw?: string): string {
   if (!raw) return "Baru saja";
   const d = new Date(raw);
@@ -90,8 +117,11 @@ function normalizeId(ord: OrderRecord): string {
   return raw.replace(/^#/, "").trim().toUpperCase();
 }
 
+// Menyusun teks faktur / nota terstruktur untuk diunduh atau dicetak oleh customer
 function formatReceiptText(ord: OrderRecord, fallbackName: string): string {
-  const rawCode = String(ord.orderCode || ord.orderNumber || ord.id || "SBN-ORDER");
+  const rawCode = String(
+    ord.orderCode || ord.orderNumber || ord.id || "SBN-ORDER"
+  );
   const codeText = rawCode.startsWith("#") ? rawCode : `#${rawCode}`;
   const dateText = formatOrderDate(ord.createdAt || ord.date);
   const statusText = String(ord.status || "PENDING").toUpperCase();
@@ -107,8 +137,7 @@ function formatReceiptText(ord: OrderRecord, fallbackName: string): string {
   const itemLines =
     Array.isArray(ord.items) && ord.items.length > 0
       ? ord.items.map((it) => {
-          const itemName =
-            it.name || it.menuName || it.menu?.name || "Menu";
+          const itemName = it.name || it.menuName || it.menu?.name || "Menu";
           const qty = Number(it.qty ?? it.quantity ?? 1);
           const unitPrice = Number(it.price ?? it.menu?.price ?? 0);
           const lineTotal = unitPrice * qty;
@@ -150,7 +179,7 @@ function formatReceiptText(ord: OrderRecord, fallbackName: string): string {
     `TOTAL BAYAR  : Rp ${totalCost.toLocaleString("id-ID")}`,
     "==========================================",
     "     Terima kasih telah berbelanja di",
-    "      Soto Banjar Selera Nusantara",
+    "       Soto Banjar Selera Nusantara",
     "==========================================",
   ].join("\n");
 }
@@ -173,6 +202,7 @@ function downloadInvoiceTxt(ord: OrderRecord, fallbackName: string) {
   URL.revokeObjectURL(url);
 }
 
+// Membuka tampilan nota bersih pada jendela cetak browser agar bisa dicetak atau disimpan sebagai PDF
 function printInvoicePdf(ord: OrderRecord, fallbackName: string) {
   const escapedText = formatReceiptText(ord, fallbackName)
     .replace(/&/g, "&amp;")
@@ -218,6 +248,7 @@ function printInvoicePdf(ord: OrderRecord, fallbackName: string) {
   printWin.document.close();
 }
 
+// Memastikan pesanan yang ditampilkan hanya milik akun customer yang sedang login
 function isOrderOwnedByCurrentUser(
   ord: OrderRecord,
   uNameLower: string,
@@ -269,18 +300,28 @@ export default function OrderHistoryModal({
   onClose,
   currentUser,
 }: OrderHistoryModalProps) {
-  // State daftar pesanan milik customer, status loading, tab status aktif, dan indikator salin VA
+  // State daftar pesanan, loading, tab status, salin VA, konfirmasi penerimaan customer, dan alert sukses
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<OrderStatusTab>("SEMUA");
   const [copiedId, setCopiedId] = useState<string | number | null>(null);
+  const [confirmedKeys, setConfirmedKeys] = useState<Set<string>>(() =>
+    readCustomerConfirmedOrders()
+  );
+  const [pendingConfirmOrder, setPendingConfirmOrder] =
+    useState<OrderRecord | null>(null);
+  const [confirmingKey, setConfirmingKey] = useState<string | null>(null);
+  const [successNotice, setSuccessNotice] = useState<string>("");
   const [syncTick, setSyncTick] = useState<number>(0);
 
   const activeUserName = (currentUser?.name || "").trim();
   const activeUserEmail = (currentUser?.email || "").trim().toLowerCase();
 
   useEffect(() => {
-    const triggerReload = () => setSyncTick((prev) => prev + 1);
+    const triggerReload = () => {
+      setConfirmedKeys(readCustomerConfirmedOrders());
+      setSyncTick((prev) => prev + 1);
+    };
     window.addEventListener("ordersUpdated", triggerReload);
     window.addEventListener("storage", triggerReload);
     return () => {
@@ -324,7 +365,9 @@ export default function OrderHistoryModal({
         let localList: OrderRecord[] = [];
         if (typeof window !== "undefined") {
           try {
-            const rawLocal = window.localStorage.getItem("soto_complete_orders");
+            const rawLocal = window.localStorage.getItem(
+              "soto_complete_orders"
+            );
             if (rawLocal) {
               const parsed = JSON.parse(rawLocal) as OrderRecord[];
               if (Array.isArray(parsed)) {
@@ -375,6 +418,72 @@ export default function OrderHistoryModal({
     };
   }, [isOpen, activeUserName, activeUserEmail, syncTick]);
 
+  // Memproses konfirmasi customer setelah menyetujui pesanan diterima
+  async function handleConfirmOrderReceived(ord: OrderRecord) {
+    const targetKey = normalizeId(ord);
+    if (!targetKey) return;
+
+    const cleanId = targetKey.startsWith("SBN-")
+      ? targetKey
+      : `SBN-${targetKey}`;
+    setConfirmingKey(targetKey);
+
+    try {
+      saveCustomerConfirmedOrder(targetKey);
+      setConfirmedKeys(readCustomerConfirmedOrders());
+
+      setOrders((prev) =>
+        prev.map((item) =>
+          normalizeId(item) === targetKey
+            ? { ...item, status: "SELESAI" }
+            : item
+        )
+      );
+
+      if (typeof window !== "undefined") {
+        try {
+          const rawLocal = window.localStorage.getItem("soto_complete_orders");
+          if (rawLocal) {
+            const parsed = JSON.parse(rawLocal) as OrderRecord[];
+            if (Array.isArray(parsed)) {
+              const updatedLocal = parsed.map((item) =>
+                normalizeId(item) === targetKey
+                  ? { ...item, status: "SELESAI" }
+                  : item
+              );
+              window.localStorage.setItem(
+                "soto_complete_orders",
+                JSON.stringify(updatedLocal)
+              );
+            }
+          }
+        } catch {}
+      }
+
+      await fetch("/api/orders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...ord,
+          id: cleanId,
+          status: "SELESAI",
+        }),
+      }).catch(() => {});
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("ordersUpdated"));
+      }
+
+      setPendingConfirmOrder(null);
+      setSuccessNotice(
+        `Pesanan #${cleanId} telah dikonfirmasi diterima dan selesai.`
+      );
+      setTimeout(() => setSuccessNotice(""), 4000);
+    } finally {
+      setConfirmingKey(null);
+    }
+  }
+
   // Menghitung jumlah pesanan per kategori status (Semua, Pending, Diproses, Dikirim, Selesai)
   const counts = useMemo(() => {
     const c = {
@@ -402,6 +511,7 @@ export default function OrderHistoryModal({
     return c;
   }, [orders]);
 
+  // Menyaring daftar pesanan sesuai tab status yang sedang dipilih customer
   const filteredOrders = useMemo(() => {
     if (activeTab === "SEMUA") return orders;
     return orders.filter((o) => {
@@ -578,7 +688,25 @@ export default function OrderHistoryModal({
           </div>
         </div>
 
-        {/* Daftar kartu pesanan */}
+        {/* Notifikasi setelah customer mengonfirmasi pesanan diterima */}
+        {successNotice && (
+          <div
+            style={{
+              margin: "14px 24px 0",
+              padding: "10px 14px",
+              borderRadius: "12px",
+              backgroundColor: "#DCFCE7",
+              border: "1.5px solid #86EFAC",
+              color: "#166534",
+              fontSize: "12.5px",
+              fontWeight: 800,
+            }}
+          >
+            ✓ {successNotice}
+          </div>
+        )}
+
+        {/* Daftar pesanan beserta tombol konfirmasi selesai & download/cetak faktur */}
         <div
           style={{
             padding: "20px 24px",
@@ -617,10 +745,14 @@ export default function OrderHistoryModal({
           ) : (
             filteredOrders.map((ord, index) => {
               const statusUpper = String(ord.status || "PENDING").toUpperCase();
-              const isSelesai =
+              const isAdminMarkedDone =
                 statusUpper === "SELESAI" ||
                 statusUpper === "COMPLETED" ||
+                statusUpper === "DONE" ||
                 statusUpper === "TERKIRIM";
+
+              const normalizedKey = normalizeId(ord);
+              const isCustomerConfirmed = confirmedKeys.has(normalizedKey);
 
               const rawId = String(
                 ord.orderCode || ord.orderNumber || ord.id || `SBN-${index}`
@@ -705,8 +837,10 @@ export default function OrderHistoryModal({
                         fontSize: "10.5px",
                         fontWeight: 900,
                         textTransform: "uppercase",
-                        backgroundColor: isSelesai ? "#DCFCE7" : "#FEF3C7",
-                        color: isSelesai ? "#166534" : "#B45309",
+                        backgroundColor: isAdminMarkedDone
+                          ? "#DCFCE7"
+                          : "#FEF3C7",
+                        color: isAdminMarkedDone ? "#166534" : "#B45309",
                       }}
                     >
                       {statusUpper}
@@ -854,7 +988,7 @@ export default function OrderHistoryModal({
                     )}
                   </div>
 
-                  {/* Daftar item menu, ongkir, total bayar, serta tombol unduh/cetak faktur */}
+                  {/* Daftar item menu, ongkir, total bayar, serta tombol aksi customer */}
                   <div
                     style={{
                       borderTop: "1px solid #F1F5F9",
@@ -930,15 +1064,65 @@ export default function OrderHistoryModal({
                       <span>Rp {totalCost.toLocaleString("id-ID")}</span>
                     </div>
 
-                    {/* Tombol unduh faktur sebagai file teks atau cetak/simpan PDF */}
+                    {/* Tombol konfirmasi pesanan selesai (hanya aktif setelah admin mengubah status menjadi SELESAI) & unduh/cetak faktur */}
                     <div
                       style={{
                         display: "flex",
                         gap: "8px",
                         marginTop: "14px",
                         flexWrap: "wrap",
+                        alignItems: "center",
                       }}
                     >
+                      {isAdminMarkedDone ? (
+                        isCustomerConfirmed ? (
+                          <span
+                            style={{
+                              padding: "7px 12px",
+                              borderRadius: "9px",
+                              backgroundColor: "#DCFCE7",
+                              border: "1px solid #86EFAC",
+                              color: "#166534",
+                              fontSize: "11.5px",
+                              fontWeight: 800,
+                            }}
+                          >
+                            ✓ Pesanan Sudah Diterima
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setPendingConfirmOrder(ord)}
+                            style={{
+                              padding: "7px 14px",
+                              borderRadius: "9px",
+                              border: "none",
+                              backgroundColor: "#166534",
+                              color: "#FFFFFF",
+                              fontSize: "11.5px",
+                              fontWeight: 800,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Pesanan Selesai / Diterima
+                          </button>
+                        )
+                      ) : (
+                        <span
+                          style={{
+                            padding: "6px 11px",
+                            borderRadius: "9px",
+                            backgroundColor: "#FAF6EE",
+                            border: "1px dashed #D6C7B2",
+                            color: "#8A6B47",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                          }}
+                        >
+                          Menunggu admin menyelesaikan pesanan
+                        </span>
+                      )}
+
                       <button
                         type="button"
                         onClick={() => downloadInvoiceTxt(ord, activeUserName)}
@@ -980,6 +1164,120 @@ export default function OrderHistoryModal({
           )}
         </div>
       </div>
+
+      {/* alert konfirmasi sebelum customer menandai pesanan sudah diterima */}
+      {pendingConfirmOrder && (
+        <div
+          onClick={() => setPendingConfirmOrder(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.6)",
+            zIndex: 250,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: "400px",
+              backgroundColor: "#FAF6EE",
+              borderRadius: "20px",
+              border: "2px solid #D6C7B2",
+              overflow: "hidden",
+              boxShadow: "0 20px 50px rgba(0, 0, 0, 0.35)",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: "#2A1A11",
+                color: "#EFE3C8",
+                padding: "14px 20px",
+                fontSize: "15px",
+                fontWeight: 900,
+              }}
+            >
+              Konfirmasi Penerimaan Pesanan
+            </div>
+
+            <div style={{ padding: "22px 20px" }}>
+              <h4
+                style={{
+                  margin: "0 0 8px",
+                  fontSize: "16px",
+                  fontWeight: 900,
+                  color: "#2A1A11",
+                }}
+              >
+                Yakin pesanan sudah diterima?
+              </h4>
+              <p
+                style={{
+                  margin: "0 0 20px",
+                  fontSize: "13px",
+                  color: "#6D4C30",
+                  lineHeight: 1.5,
+                }}
+              >
+                Pastikan sajian{" "}
+                <strong>#{normalizeId(pendingConfirmOrder)}</strong> telah
+                sampai dan sesuai dengan pesanan Anda sebelum menyelesaikan
+                transaksi.
+              </p>
+
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button
+                  type="button"
+                  onClick={() => setPendingConfirmOrder(null)}
+                  style={{
+                    flex: 1,
+                    padding: "10px 14px",
+                    borderRadius: "10px",
+                    border: "1.5px solid #D6C7B2",
+                    backgroundColor: "#FFFFFF",
+                    color: "#2A1A11",
+                    fontSize: "13px",
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  Belum, Batal
+                </button>
+
+                <button
+                  type="button"
+                  disabled={
+                    confirmingKey === normalizeId(pendingConfirmOrder)
+                  }
+                  onClick={() =>
+                    void handleConfirmOrderReceived(pendingConfirmOrder)
+                  }
+                  style={{
+                    flex: 1,
+                    padding: "10px 14px",
+                    borderRadius: "10px",
+                    border: "none",
+                    backgroundColor: "#166534",
+                    color: "#FFFFFF",
+                    fontSize: "13px",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                  }}
+                >
+                  {confirmingKey === normalizeId(pendingConfirmOrder)
+                    ? "Menyimpan..."
+                    : "Ya, Sudah Diterima"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -39,6 +39,12 @@ interface OrderRecord {
   items?: OrderItem[];
 }
 
+interface TopMenuStat {
+  name: string;
+  totalQty: number;
+  totalRevenue: number;
+}
+
 // Daftar opsi bulan (1-12) dan tanggal hari (1-31) untuk filter periode omset
 const MONTH_OPTIONS = [
   { value: "ALL", label: "Semua Bulan" },
@@ -58,7 +64,6 @@ const MONTH_OPTIONS = [
 
 const DAY_OPTIONS = Array.from({ length: 31 }, (_, i) => String(i + 1));
 
-// Menyeragamkan kode pesanan tanpa awalan '#' agar pencocokan data akurat
 function normalizeOrderKey(ord: OrderRecord): string {
   const raw = String(ord.orderNumber || ord.orderCode || ord.id || "");
   return raw.replace(/^#/, "").trim().toUpperCase();
@@ -182,7 +187,6 @@ function exportOmsetCsv(orderList: OrderRecord[], filterLabel: string) {
       .join(",")
   );
 
-  // Menggunakan UTF-8 BOM (\uFEFF) agar kolom dan karakter rapi saat dibuka di Excel
   const csvContent =
     "\uFEFF" + [headers.map(escapeOmsetCsvField).join(","), ...rows].join("\n");
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -204,15 +208,16 @@ function printOmsetPage() {
 }
 
 export default function AdminOmsetPage() {
-  // State daftar pesanan, loading, filter status transaksi, dan filter periode (hari, bulan, tahun)
+  // State daftar pesanan, loading, filter status transaksi, filter hari/bulan/tahun, dan rentang tanggal
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [dayFilter, setDayFilter] = useState<string>("ALL");
   const [monthFilter, setMonthFilter] = useState<string>("ALL");
   const [yearFilter, setYearFilter] = useState<string>("ALL");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
 
-  // Memuat dan menggabungkan data pesanan dari API database dan localStorage secara real-time
   useEffect(() => {
     let isCancelled = false;
 
@@ -304,7 +309,7 @@ export default function AdminOmsetPage() {
     [orders]
   );
 
-  // Daftar tahun dari transaksi yang tersedia untuk dropdown filter tahun
+  // Mengumpulkan daftar tahun unik dari transaksi yang tersedia untuk dropdown filter tahun
   const availableYears = useMemo(() => {
     const yearSet = new Set<string>();
     yearSet.add(String(new Date().getFullYear()));
@@ -318,20 +323,37 @@ export default function AdminOmsetPage() {
     return Array.from(yearSet).sort((a, b) => Number(b) - Number(a));
   }, [validOrders]);
 
-  // Menyaring transaksi berdasarkan hari (tanggal), bulan, dan tahun yang dipilih
+  // Mengecek apakah minimal satu filter periode (hari, bulan, tahun, atau rentang tanggal) sedang aktif
+  const hasActiveDateFilter =
+    dayFilter !== "ALL" ||
+    monthFilter !== "ALL" ||
+    yearFilter !== "ALL" ||
+    startDate !== "" ||
+    endDate !== "";
+
+  // Menyaring transaksi valid berdasarkan hari, bulan, tahun, serta rentang Dari Tanggal - Sampai Tanggal
   const dateFilteredOrders = useMemo(() => {
+    const startMs = startDate
+      ? new Date(`${startDate}T00:00:00`).getTime()
+      : null;
+    const endMs = endDate
+      ? new Date(`${endDate}T23:59:59.999`).getTime()
+      : null;
+
     return validOrders.filter((ord) => {
-      if (
-        dayFilter === "ALL" &&
-        monthFilter === "ALL" &&
-        yearFilter === "ALL"
-      ) {
-        return true;
-      }
+      if (!hasActiveDateFilter) return true;
 
       if (!ord.createdAt) return false;
       const d = new Date(ord.createdAt);
-      if (Number.isNaN(d.getTime())) return false;
+      const ordMs = d.getTime();
+      if (Number.isNaN(ordMs)) return false;
+
+      if (startMs !== null && !Number.isNaN(startMs) && ordMs < startMs) {
+        return false;
+      }
+      if (endMs !== null && !Number.isNaN(endMs) && ordMs > endMs) {
+        return false;
+      }
 
       const matchDay =
         dayFilter === "ALL" || String(d.getDate()) === dayFilter;
@@ -342,13 +364,23 @@ export default function AdminOmsetPage() {
 
       return matchDay && matchMonth && matchYear;
     });
-  }, [validOrders, dayFilter, monthFilter, yearFilter]);
+  }, [
+    validOrders,
+    hasActiveDateFilter,
+    dayFilter,
+    monthFilter,
+    yearFilter,
+    startDate,
+    endDate,
+  ]);
 
-  // Mengembalikan seluruh filter periode tanggal ke posisi semua periode
+  // Mengembalikan seluruh filter periode (hari, bulan, tahun, dan rentang tanggal) ke kondisi awal
   function handleResetDateFilter() {
     setDayFilter("ALL");
     setMonthFilter("ALL");
     setYearFilter("ALL");
+    setStartDate("");
+    setEndDate("");
   }
 
   // Menghitung ringkasan angka omset keseluruhan, selesai, berjalan, dan penjualan menu
@@ -392,7 +424,41 @@ export default function AdminOmsetPage() {
     };
   }, [dateFilteredOrders]);
 
-  // Menyaring daftar transaksi yang ditampilkan di tabel sesuai filter
+  // Menghitung peringkat 5 menu terlaris berdasarkan total porsi terjual
+  const topSellingMenus = useMemo<TopMenuStat[]>(() => {
+    const map = new Map<string, TopMenuStat>();
+
+    for (const ord of dateFilteredOrders) {
+      if (!Array.isArray(ord.items)) continue;
+      for (const it of ord.items) {
+        const rawName = String(it.name || it.title || "").trim();
+        if (!rawName) continue;
+        const qty = Number(it.qty ?? it.quantity ?? 1);
+        const unitPrice = Number(it.price ?? 0);
+        const key = rawName.toLowerCase();
+
+        const existing = map.get(key);
+        if (existing) {
+          existing.totalQty += qty;
+          existing.totalRevenue += qty * unitPrice;
+        } else {
+          map.set(key, {
+            name: rawName,
+            totalQty: qty,
+            totalRevenue: qty * unitPrice,
+          });
+        }
+      }
+    }
+
+    return Array.from(map.values())
+      .sort((a, b) => b.totalQty - a.totalQty || b.totalRevenue - a.totalRevenue)
+      .slice(0, 5);
+  }, [dateFilteredOrders]);
+
+  const maxTopQty = topSellingMenus[0]?.totalQty || 1;
+
+  // Menyaring daftar transaksi yang ditampilkan di tabel sesuai filter status
   const displayedOrders = useMemo(() => {
     if (statusFilter === "ALL") return dateFilteredOrders;
     return dateFilteredOrders.filter((ord) => {
@@ -413,12 +479,24 @@ export default function AdminOmsetPage() {
     });
   }, [dateFilteredOrders, statusFilter]);
 
-  const activeFilterLabel =
-    statusFilter === "SELESAI"
-      ? "Selesai"
-      : statusFilter === "PROSES"
-      ? "Berjalan"
-      : "Semua";
+  const activeFilterLabel = useMemo(() => {
+    const statusText =
+      statusFilter === "SELESAI"
+        ? "Selesai"
+        : statusFilter === "PROSES"
+        ? "Berjalan"
+        : "Semua";
+    if (startDate && endDate) {
+      return `${statusText} ${startDate} sd ${endDate}`;
+    }
+    if (startDate) {
+      return `${statusText} mulai ${startDate}`;
+    }
+    if (endDate) {
+      return `${statusText} sampai ${endDate}`;
+    }
+    return statusText;
+  }, [statusFilter, startDate, endDate]);
 
   return (
     <div
@@ -430,7 +508,7 @@ export default function AdminOmsetPage() {
         minHeight: "100vh",
       }}
     >
-      {/* Header */}
+      {/* Header halaman omset beserta tombol Export CSV dan Cetak Laporan */}
       <header
         style={{
           backgroundColor: "#FFFFFF",
@@ -507,7 +585,7 @@ export default function AdminOmsetPage() {
           gap: "24px",
         }}
       >
-        {/* Filter periode omset berdasarkan hari (tanggal), bulan, dan tahun */}
+        {/* Panel filter periode omset (Hari/Bulan/Tahun + Dari Tanggal - Sampai Tanggal) */}
         <div
           style={{
             backgroundColor: "#FFFFFF",
@@ -515,98 +593,184 @@ export default function AdminOmsetPage() {
             padding: "16px 20px",
             border: "1.5px solid #E5DEC9",
             display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
+            flexDirection: "column",
             gap: "12px",
           }}
         >
           <div
             style={{
-              fontSize: "13px",
-              fontWeight: 900,
-              color: "#2A1A11",
-            }}
-          >
-            Filter Periode Omset (Hari, Bulan, Tahun)
-          </div>
-
-          <div
-            style={{
               display: "flex",
+              justifyContent: "space-between",
               alignItems: "center",
               flexWrap: "wrap",
-              gap: "10px",
+              gap: "12px",
             }}
           >
-            <select
-              value={dayFilter}
-              onChange={(e) => setDayFilter(e.target.value)}
+            <div
               style={{
-                padding: "8px 12px",
-                borderRadius: "10px",
-                border: "1.5px solid #D6C7B2",
-                backgroundColor: "#FAF6EE",
                 fontSize: "13px",
-                fontWeight: 800,
+                fontWeight: 900,
                 color: "#2A1A11",
-                cursor: "pointer",
               }}
             >
-              <option value="ALL">Semua Hari</option>
-              {DAY_OPTIONS.map((d) => (
-                <option key={d} value={d}>
-                  Tanggal {d}
-                </option>
-              ))}
-            </select>
+              Filter Periode Omset
+            </div>
 
-            <select
-              value={monthFilter}
-              onChange={(e) => setMonthFilter(e.target.value)}
+            <div
               style={{
-                padding: "8px 12px",
-                borderRadius: "10px",
-                border: "1.5px solid #D6C7B2",
-                backgroundColor: "#FAF6EE",
-                fontSize: "13px",
-                fontWeight: 800,
-                color: "#2A1A11",
-                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "10px",
               }}
             >
-              {MONTH_OPTIONS.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
+              <select
+                value={dayFilter}
+                onChange={(e) => setDayFilter(e.target.value)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: "10px",
+                  border: "1.5px solid #D6C7B2",
+                  backgroundColor: "#FAF6EE",
+                  fontSize: "13px",
+                  fontWeight: 800,
+                  color: "#2A1A11",
+                  cursor: "pointer",
+                }}
+              >
+                <option value="ALL">Semua Hari</option>
+                {DAY_OPTIONS.map((d) => (
+                  <option key={d} value={d}>
+                    Tanggal {d}
+                  </option>
+                ))}
+              </select>
 
-            <select
-              value={yearFilter}
-              onChange={(e) => setYearFilter(e.target.value)}
+              <select
+                value={monthFilter}
+                onChange={(e) => setMonthFilter(e.target.value)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: "10px",
+                  border: "1.5px solid #D6C7B2",
+                  backgroundColor: "#FAF6EE",
+                  fontSize: "13px",
+                  fontWeight: 800,
+                  color: "#2A1A11",
+                  cursor: "pointer",
+                }}
+              >
+                {MONTH_OPTIONS.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={yearFilter}
+                onChange={(e) => setYearFilter(e.target.value)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: "10px",
+                  border: "1.5px solid #D6C7B2",
+                  backgroundColor: "#FAF6EE",
+                  fontSize: "13px",
+                  fontWeight: 800,
+                  color: "#2A1A11",
+                  cursor: "pointer",
+                }}
+              >
+                <option value="ALL">Semua Tahun</option>
+                {availableYears.map((yr) => (
+                  <option key={yr} value={yr}>
+                    Tahun {yr}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Baris filter rentang tanggal Dari Tanggal - Sampai Tanggal */}
+          <div
+            style={{
+              borderTop: "1px dashed #E5DEC9",
+              paddingTop: "12px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "12px",
+            }}
+          >
+            <div
               style={{
-                padding: "8px 12px",
-                borderRadius: "10px",
-                border: "1.5px solid #D6C7B2",
-                backgroundColor: "#FAF6EE",
-                fontSize: "13px",
-                fontWeight: 800,
-                color: "#2A1A11",
-                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "10px",
               }}
             >
-              <option value="ALL">Semua Tahun</option>
-              {availableYears.map((yr) => (
-                <option key={yr} value={yr}>
-                  Tahun {yr}
-                </option>
-              ))}
-            </select>
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontSize: "12.5px",
+                  fontWeight: 800,
+                  color: "#6D4C30",
+                }}
+              >
+                <span>Dari Tanggal:</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  max={endDate || undefined}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  style={{
+                    padding: "7px 11px",
+                    borderRadius: "10px",
+                    border: "1.5px solid #D6C7B2",
+                    backgroundColor: "#FAF6EE",
+                    fontSize: "12.5px",
+                    fontWeight: 800,
+                    color: "#2A1A11",
+                    cursor: "pointer",
+                  }}
+                />
+              </label>
 
-            {(dayFilter !== "ALL" ||
-              monthFilter !== "ALL" ||
-              yearFilter !== "ALL") && (
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontSize: "12.5px",
+                  fontWeight: 800,
+                  color: "#6D4C30",
+                }}
+              >
+                <span>Sampai Tanggal:</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  min={startDate || undefined}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  style={{
+                    padding: "7px 11px",
+                    borderRadius: "10px",
+                    border: "1.5px solid #D6C7B2",
+                    backgroundColor: "#FAF6EE",
+                    fontSize: "12.5px",
+                    fontWeight: 800,
+                    color: "#2A1A11",
+                    cursor: "pointer",
+                  }}
+                />
+              </label>
+            </div>
+
+            {hasActiveDateFilter && (
               <button
                 type="button"
                 onClick={handleResetDateFilter}
@@ -621,13 +785,13 @@ export default function AdminOmsetPage() {
                   cursor: "pointer",
                 }}
               >
-                Reset Periode
+                Reset Semua Filter Tanggal
               </button>
             )}
           </div>
         </div>
 
-        {/* Ringkasan omset */}
+        {/* Kartu ringkasan angka omset */}
         <div
           style={{
             display: "grid",
@@ -775,6 +939,145 @@ export default function AdminOmsetPage() {
               Total Ongkir: Rp {summary.totalShipping.toLocaleString("id-ID")}
             </div>
           </div>
+        </div>
+
+        {/* statistik 5 menu terlaris berdasarkan total porsi terjual */}
+        <div
+          style={{
+            backgroundColor: "#FFFFFF",
+            borderRadius: "20px",
+            padding: "22px 24px",
+            border: "1.5px solid #E5DEC9",
+            boxShadow: "0 4px 15px rgba(0,0,0,0.03)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "14px",
+              flexWrap: "wrap",
+              gap: "8px",
+            }}
+          >
+            <h3
+              style={{
+                margin: 0,
+                fontSize: "15.5px",
+                fontWeight: 900,
+                color: "#2A1A11",
+              }}
+            >
+              Menu Terlaris (Berdasarkan Porsi Terjual)
+            </h3>
+            <span
+              style={{
+                fontSize: "11.5px",
+                fontWeight: 800,
+                color: "#6D4C30",
+              }}
+            >
+              Top {topSellingMenus.length} Sajian Periode Ini
+            </span>
+          </div>
+
+          {topSellingMenus.length === 0 ? (
+            <div
+              style={{
+                padding: "16px 0",
+                fontSize: "12.5px",
+                color: "#8A6B47",
+                fontWeight: 700,
+              }}
+            >
+              Belum ada data item terjual pada periode ini.
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "12px",
+              }}
+            >
+              {topSellingMenus.map((stat, idx) => {
+                const widthPercent = Math.max(
+                  10,
+                  Math.round((stat.totalQty / maxTopQty) * 100)
+                );
+                return (
+                  <div
+                    key={stat.name}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "5px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        fontSize: "12.5px",
+                        gap: "10px",
+                      }}
+                    >
+                      <div style={{ fontWeight: 800, color: "#2A1A11" }}>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            minWidth: "22px",
+                            padding: "1px 6px",
+                            marginRight: "8px",
+                            borderRadius: "6px",
+                            backgroundColor: idx === 0 ? "#2A1A11" : "#EFE3C8",
+                            color: idx === 0 ? "#FDE68A" : "#2A1A11",
+                            fontSize: "11px",
+                            fontWeight: 900,
+                            textAlign: "center",
+                          }}
+                        >
+                          #{idx + 1}
+                        </span>
+                        {stat.name}
+                      </div>
+                      <div
+                        style={{
+                          fontWeight: 800,
+                          color: "#166534",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {stat.totalQty} porsi • Rp{" "}
+                        {stat.totalRevenue.toLocaleString("id-ID")}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "8px",
+                        borderRadius: "999px",
+                        backgroundColor: "#FAF6EE",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${widthPercent}%`,
+                          height: "100%",
+                          borderRadius: "999px",
+                          backgroundColor: idx === 0 ? "#D97706" : "#8A6B47",
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Tabel rincian pendapatan per transaksi */}
