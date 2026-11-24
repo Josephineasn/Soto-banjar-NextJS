@@ -90,6 +90,134 @@ function normalizeId(ord: OrderRecord): string {
   return raw.replace(/^#/, "").trim().toUpperCase();
 }
 
+function formatReceiptText(ord: OrderRecord, fallbackName: string): string {
+  const rawCode = String(ord.orderCode || ord.orderNumber || ord.id || "SBN-ORDER");
+  const codeText = rawCode.startsWith("#") ? rawCode : `#${rawCode}`;
+  const dateText = formatOrderDate(ord.createdAt || ord.date);
+  const statusText = String(ord.status || "PENDING").toUpperCase();
+  const recipient =
+    ord.recipientName || ord.customerName || fallbackName || "Pelanggan";
+  const area = ord.area || ord.deliveryArea || "Jakarta";
+  const service =
+    ord.service || ord.shippingService || ord.courier || "Kurir Instant";
+  const payment = ord.paymentMethod || "BCA VIRTUAL ACCOUNT";
+  const vaNum = ord.vaNumber || ord.virtualAccount || "-";
+  const address = ord.address || ord.fullAddress || "-";
+
+  const itemLines =
+    Array.isArray(ord.items) && ord.items.length > 0
+      ? ord.items.map((it) => {
+          const itemName =
+            it.name || it.menuName || it.menu?.name || "Menu";
+          const qty = Number(it.qty ?? it.quantity ?? 1);
+          const unitPrice = Number(it.price ?? it.menu?.price ?? 0);
+          const lineTotal = unitPrice * qty;
+          return `- ${qty}x ${itemName} (@Rp ${unitPrice.toLocaleString(
+            "id-ID"
+          )}) = Rp ${lineTotal.toLocaleString("id-ID")}`;
+        })
+      : ["- Rincian menu sesuai pesanan"];
+
+  const shippingCost = Number(
+    ord.shippingFee ?? ord.shippingCost ?? ord.deliveryFee ?? 0
+  );
+  const discount = Number(ord.discount ?? 0);
+  const totalCost = Number(
+    ord.totalPrice ?? ord.totalAmount ?? ord.total ?? 0
+  );
+
+  return [
+    "==========================================",
+    "       SOTO BANJAR SELERA NUSANTARA",
+    "          FAKTUR / NOTA PESANAN",
+    "==========================================",
+    `No. Faktur   : ${codeText}`,
+    `Tanggal      : ${dateText}`,
+    `Status       : ${statusText}`,
+    `Penerima     : ${recipient}`,
+    `Wilayah      : ${area} (${service})`,
+    `Alamat       : ${address}`,
+    `Pembayaran   : ${payment}`,
+    `No. VA       : ${vaNum}`,
+    "------------------------------------------",
+    "RINCIAN ITEM:",
+    ...itemLines,
+    "------------------------------------------",
+    `Ongkos Kirim : Rp ${shippingCost.toLocaleString("id-ID")}`,
+    ...(discount > 0
+      ? [`Diskon       : -Rp ${discount.toLocaleString("id-ID")}`]
+      : []),
+    `TOTAL BAYAR  : Rp ${totalCost.toLocaleString("id-ID")}`,
+    "==========================================",
+    "     Terima kasih telah berbelanja di",
+    "      Soto Banjar Selera Nusantara",
+    "==========================================",
+  ].join("\n");
+}
+
+// Mengunduh faktur pesanan customer ke perangkat sebagai file teks (.txt)
+function downloadInvoiceTxt(ord: OrderRecord, fallbackName: string) {
+  const safeCode = String(
+    ord.orderCode || ord.orderNumber || ord.id || "faktur"
+  ).replace(/[^a-zA-Z0-9-_]/g, "");
+  const content = "\uFEFF" + formatReceiptText(ord, fallbackName);
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", `faktur-${safeCode || "pesanan"}.txt`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function printInvoicePdf(ord: OrderRecord, fallbackName: string) {
+  const escapedText = formatReceiptText(ord, fallbackName)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  const printWin = window.open("", "_blank", "width=460,height=640");
+  if (!printWin) {
+    window.print();
+    return;
+  }
+
+  printWin.document.write(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Faktur Pesanan</title>
+        <style>
+          body {
+            font-family: "Courier New", Courier, monospace;
+            padding: 24px;
+            color: #2A1A11;
+            background: #FFFFFF;
+          }
+          pre {
+            white-space: pre-wrap;
+            font-size: 13px;
+            line-height: 1.5;
+            margin: 0;
+          }
+        </style>
+      </head>
+      <body>
+        <pre>${escapedText}</pre>
+        <script>
+          window.onload = function () {
+            window.print();
+          };
+        </script>
+      </body>
+    </html>
+  `);
+  printWin.document.close();
+}
+
 function isOrderOwnedByCurrentUser(
   ord: OrderRecord,
   uNameLower: string,
@@ -113,22 +241,18 @@ function isOrderOwnedByCurrentUser(
     .trim()
     .toLowerCase();
 
-  // 1. Jika ada tag/properti accountName, cocokkan secara ketat dengan nama akun yang sedang login
   if (ordAccountName) {
     if (uNameLower && ordAccountName === uNameLower) return true;
     if (uEmailLower && ordAccountName === uEmailLower.split("@")[0]) return true;
     return false;
   }
 
-  // 2. Jika ada email di pesanan, cocokkan secara ketat dengan email akun yang sedang login
   if (ordEmail && uEmailLower) {
     return ordEmail === uEmailLower;
   }
 
-  // 3. Untuk pesanan yang tidak memiliki tag [USER:...], cocokkan dengan nama penerima
   if (uNameLower && ordCustomerName) {
     if (ordCustomerName === uNameLower) return true;
-    // Jika username akun diawali dengan nama penerima (contoh: akun "gadinghol", penerima "gading")
     if (
       ordCustomerName.length >= 4 &&
       uNameLower.startsWith(ordCustomerName)
@@ -145,13 +269,13 @@ export default function OrderHistoryModal({
   onClose,
   currentUser,
 }: OrderHistoryModalProps) {
+  // State daftar pesanan milik customer, status loading, tab status aktif, dan indikator salin VA
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<OrderStatusTab>("SEMUA");
   const [copiedId, setCopiedId] = useState<string | number | null>(null);
   const [syncTick, setSyncTick] = useState<number>(0);
 
-  // Gunakan langsung currentUser dari prop (jangan pakai key localStorage lama yang nyangkut)
   const activeUserName = (currentUser?.name || "").trim();
   const activeUserEmail = (currentUser?.email || "").trim().toLowerCase();
 
@@ -176,7 +300,6 @@ export default function OrderHistoryModal({
         const uNameLower = activeUserName.toLowerCase();
         const uEmailLower = activeUserEmail.toLowerCase();
 
-        // Jika user sudah logout / belum login, wajib kosongkan state orders
         if (!uNameLower && !uEmailLower) {
           if (!isCancelled) {
             setOrders([]);
@@ -196,10 +319,8 @@ export default function OrderHistoryModal({
               ? (data as { orders: OrderRecord[] }).orders
               : [];
           }
-        } catch {
-        }
+        } catch {}
 
-        // Ambil juga dari localStorage "soto_complete_orders" (yang disimpan oleh CartDrawer)
         let localList: OrderRecord[] = [];
         if (typeof window !== "undefined") {
           try {
@@ -210,12 +331,9 @@ export default function OrderHistoryModal({
                 localList = parsed;
               }
             }
-          } catch {
-            // abaikan
-          }
+          } catch {}
         }
 
-        // Gabungkan (prioritaskan status terbaru dari Database Prisma jika ID sama)
         const mergedMap = new Map<string, OrderRecord>();
 
         for (const item of dbList) {
@@ -232,7 +350,6 @@ export default function OrderHistoryModal({
 
         const combinedList = Array.from(mergedMap.values());
 
-        // Filter hanya milik akun yang sedang login saat ini
         const userFiltered = combinedList.filter((ord) => {
           const st = String(ord.status || "PENDING").toUpperCase();
           if (st === "DIBATALKAN" || st === "CANCELLED") return false;
@@ -258,6 +375,7 @@ export default function OrderHistoryModal({
     };
   }, [isOpen, activeUserName, activeUserEmail, syncTick]);
 
+  // Menghitung jumlah pesanan per kategori status (Semua, Pending, Diproses, Dikirim, Selesai)
   const counts = useMemo(() => {
     const c = {
       SEMUA: orders.length,
@@ -343,7 +461,7 @@ export default function OrderHistoryModal({
           boxShadow: "0 25px 60px rgba(0, 0, 0, 0.35)",
         }}
       >
-        {/* Header Modal */}
+        {/* Header */}
         <div
           style={{
             backgroundColor: "#FFFFFF",
@@ -409,7 +527,6 @@ export default function OrderHistoryModal({
             </button>
           </div>
 
-          {/* 5 Tab Status */}
           <div
             style={{
               display: "flex",
@@ -461,7 +578,7 @@ export default function OrderHistoryModal({
           </div>
         </div>
 
-        {/* Daftar Kartu Pesanan */}
+        {/* Daftar kartu pesanan */}
         <div
           style={{
             padding: "20px 24px",
@@ -552,7 +669,6 @@ export default function OrderHistoryModal({
                     boxShadow: "0 4px 16px rgba(42, 26, 17, 0.04)",
                   }}
                 >
-                  {/* Kode Order & Badge Status */}
                   <div
                     style={{
                       display: "flex",
@@ -597,7 +713,7 @@ export default function OrderHistoryModal({
                     </span>
                   </div>
 
-                  {/* Metode Pembayaran & Nomor VA */}
+                  {/* Informasi nomor Virtual Account */}
                   <div
                     style={{
                       backgroundColor: "#FAF6EE",
@@ -655,7 +771,7 @@ export default function OrderHistoryModal({
                     </button>
                   </div>
 
-                  {/* Grid Info Pengiriman */}
+                  {/* Rincian penerima, wilayah, kurir, alamat, dan catatan */}
                   <div
                     style={{
                       display: "grid",
@@ -738,7 +854,7 @@ export default function OrderHistoryModal({
                     )}
                   </div>
 
-                  {/* Detail Item Pesanan */}
+                  {/* Daftar item menu, ongkir, total bayar, serta tombol unduh/cetak faktur */}
                   <div
                     style={{
                       borderTop: "1px solid #F1F5F9",
@@ -812,6 +928,50 @@ export default function OrderHistoryModal({
                     >
                       <span>Total Pembayaran:</span>
                       <span>Rp {totalCost.toLocaleString("id-ID")}</span>
+                    </div>
+
+                    {/* Tombol unduh faktur sebagai file teks atau cetak/simpan PDF */}
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "8px",
+                        marginTop: "14px",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => downloadInvoiceTxt(ord, activeUserName)}
+                        style={{
+                          padding: "7px 14px",
+                          borderRadius: "9px",
+                          border: "1.5px solid #2A1A11",
+                          backgroundColor: "#2A1A11",
+                          color: "#EFE3C8",
+                          fontSize: "11.5px",
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Download Nota (.txt)
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => printInvoicePdf(ord, activeUserName)}
+                        style={{
+                          padding: "7px 14px",
+                          borderRadius: "9px",
+                          border: "1.5px solid #8A6B47",
+                          backgroundColor: "#FAF6EE",
+                          color: "#2A1A11",
+                          fontSize: "11.5px",
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Cetak / Simpan PDF
+                      </button>
                     </div>
                   </div>
                 </div>

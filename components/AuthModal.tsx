@@ -25,14 +25,25 @@ interface AuthApiResponse {
   error?: string;
 }
 
-interface LocalLoginLogItem {
-  id: string;
-  logCode: string;
-  username: string;
-  role: string;
-  device: string;
-  status: string;
-  createdAt: string;
+// Mengirim pencatatan log ke API
+function sendSingleLoginHistory(
+  usernameLabel: string,
+  role: string,
+  action: "LOGIN" | "LOGIN_FAILED",
+  status: string
+) {
+  void fetch("/api/login-history", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: usernameLabel,
+      role,
+      action,
+      status,
+      device:
+        typeof navigator !== "undefined" ? navigator.userAgent : "Web Browser",
+    }),
+  }).catch(() => {});
 }
 
 export function AuthModal({
@@ -57,7 +68,6 @@ export function AuthModal({
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
 
-  // Validasi aturan password secara real-time
   const hasMinLength = password.length >= 6;
   const hasNumber = /\d/.test(password);
   const isMatch = password.length > 0 && password === confirmPassword;
@@ -79,6 +89,7 @@ export function AuthModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setErrorMsg("");
 
     const rawId = identifier.trim();
@@ -103,6 +114,7 @@ export function AuthModal({
       : `${rawId.toLowerCase().replace(/\s+/g, "")}@sotobanjar.com`;
     const displayName =
       name.trim() || (rawId.includes("@") ? rawId.split("@")[0] : rawId);
+    const attemptUserLabel = `${displayName} (${normalizedEmail})`;
 
     setSubmitting(true);
     try {
@@ -121,7 +133,7 @@ export function AuthModal({
 
       const data = (await response.json().catch(() => ({}))) as AuthApiResponse;
 
-      // JIKA GAGAL
+      // Jika login/register gagal
       if (!response.ok || !data.user) {
         setErrorMsg(
           data.error ||
@@ -129,11 +141,17 @@ export function AuthModal({
               ? "Akun belum terdaftar atau password salah. Silakan daftar terlebih dahulu."
               : "Gagal mendaftarkan akun.")
         );
+        sendSingleLoginHistory(
+          attemptUserLabel,
+          "CUSTOMER",
+          "LOGIN_FAILED",
+          "LOGIN GAGAL"
+        );
         setSubmitting(false);
         return;
       }
 
-      // JIKA BERHASIL
+      // Jika login/register berhasil
       const finalUser: AuthUserPayload = {
         id: data.user.id,
         name: data.user.name || displayName,
@@ -141,48 +159,22 @@ export function AuthModal({
         role: String(data.user.role || "CUSTOMER").toUpperCase(),
       };
 
+      const finalUserLabel = `${finalUser.name} (${finalUser.email})`;
+      const successStatus =
+        mode === "register" ? "REGISTER & LOGIN" : "LOGIN BERHASIL";
+
       if (typeof window !== "undefined") {
         const serialized = JSON.stringify(finalUser);
         window.sessionStorage.setItem("soto_active_user", serialized);
         window.localStorage.setItem("soto_user", serialized);
         window.localStorage.setItem("currentUser", serialized);
 
-        const logCode = `LOG-${Math.floor(100000 + Math.random() * 900000)}`;
-        const logEntry: LocalLoginLogItem = {
-          id: logCode,
-          logCode,
-          username: `${finalUser.name} (${finalUser.email})`,
-          role: finalUser.role,
-          device:
-            typeof navigator !== "undefined"
-              ? navigator.userAgent
-              : "Web Browser",
-          status:
-            mode === "register" ? "REGISTER & LOGIN" : "LOGIN BERHASIL",
-          createdAt: new Date().toISOString(),
-        };
-
-        try {
-          const rawLogs = window.localStorage.getItem("soto_login_logs");
-          const parsedLogs: unknown = rawLogs ? JSON.parse(rawLogs) : [];
-          const list: LocalLoginLogItem[] = Array.isArray(parsedLogs)
-            ? (parsedLogs as LocalLoginLogItem[])
-            : [];
-          list.unshift(logEntry);
-          window.localStorage.setItem("soto_login_logs", JSON.stringify(list));
-        } catch {}
-
-        void fetch("/api/login-history", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            username: `${finalUser.name} (${finalUser.email})`,
-            role: finalUser.role,
-            action: "LOGIN",
-            status:
-              mode === "register" ? "REGISTER & LOGIN" : "LOGIN BERHASIL",
-          }),
-        }).catch(() => {});
+        sendSingleLoginHistory(
+          finalUserLabel,
+          finalUser.role,
+          "LOGIN",
+          successStatus
+        );
 
         window.dispatchEvent(new Event("authChanged"));
         window.dispatchEvent(new Event("ordersUpdated"));
@@ -201,6 +193,12 @@ export function AuthModal({
     } catch (error: unknown) {
       console.error("Auth error:", error);
       setErrorMsg("Terjadi kesalahan jaringan saat memproses login.");
+      sendSingleLoginHistory(
+        attemptUserLabel,
+        "CUSTOMER",
+        "LOGIN_FAILED",
+        "LOGIN GAGAL"
+      );
     } finally {
       setSubmitting(false);
     }
@@ -479,7 +477,6 @@ export function AuthModal({
                 </div>
               </div>
 
-              {/* INDIKATOR SYARAT PASSWORD */}
               <div
                 style={{
                   backgroundColor: "#FDFBF7",

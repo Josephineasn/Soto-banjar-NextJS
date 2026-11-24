@@ -59,11 +59,13 @@ interface AlertBoxState {
   type: "success" | "error" | "info";
 }
 
+// Menyeragamkan ID order tanpa tanda pagar di awal
 function normalizeOrderKey(ord: OrderRecord): string {
   const raw = String(ord.orderNumber || ord.orderCode || ord.id || "");
   return raw.replace(/^#/, "").trim().toUpperCase();
 }
 
+// Menghitung total bayar pesanan termasuk ongkir, thermal bag, dan diskon
 function getOrderTotal(ord: OrderRecord): number {
   const itemsSub = Array.isArray(ord.items)
     ? ord.items.reduce(
@@ -88,14 +90,113 @@ function getOrderTotal(ord: OrderRecord): number {
   );
 }
 
+// Mengamankan nilai teks kolom CSV dengan kutip ganda
+function escapeOrderListCsvCell(value: unknown): string {
+  const str = String(value ?? "");
+  return `"${str.replace(/"/g, '""')}"`;
+}
+
+// Menggabungkan daftar menu dalam satu pesanan menjadi teks ringkas untuk CSV
+function formatOrderItemsForCsv(ord: OrderRecord): string {
+  if (!Array.isArray(ord.items) || ord.items.length === 0) {
+    return "Paket Soto Banjar";
+  }
+  return ord.items
+    .map(
+      (it) =>
+        `${it.qty ?? it.quantity ?? 1}x ${it.name || it.title || "Menu"}`
+    )
+    .join("; ");
+}
+
+// Mengekspor daftar pesanan ke file CSV
+function exportOrdersListCsv(orderList: OrderRecord[]) {
+  if (!orderList.length) {
+    alert("Belum ada data pesanan untuk di-export.");
+    return;
+  }
+
+  const headers = [
+    "No",
+    "Waktu Masuk",
+    "ID Order",
+    "Penerima",
+    "No HP",
+    "Wilayah",
+    "Alamat Pengiriman",
+    "Rincian Menu",
+    "Kurir",
+    "Pembayaran",
+    "Total Bayar (Rp)",
+    "Status",
+  ];
+
+  const rows = orderList.map((ord, idx) => {
+    const key = normalizeOrderKey(ord);
+    const codeText = key.startsWith("SBN-") ? `#${key}` : `#SBN-${key}`;
+    const custName =
+      ord.customerName || ord.recipientName || ord.name || "Pelanggan";
+    const phoneText = ord.customerPhone || ord.phone || "-";
+    const areaText = ord.area || ord.deliveryArea || "Jabodetabek";
+    const courierText = ord.shippingService || ord.service || "Kurir Instant";
+    const totalAmt = getOrderTotal(ord);
+    const rawStatus = String(ord.status || "PENDING").toUpperCase();
+    const timeStr = ord.createdAt
+      ? new Date(ord.createdAt).toLocaleString("id-ID", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        }) + " WIB"
+      : "Baru saja";
+
+    return [
+      idx + 1,
+      timeStr,
+      codeText,
+      custName,
+      phoneText,
+      areaText,
+      ord.address || "-",
+      formatOrderItemsForCsv(ord),
+      courierText,
+      ord.paymentMethod || "BCA Virtual Account",
+      totalAmt,
+      rawStatus,
+    ]
+      .map(escapeOrderListCsvCell)
+      .join(",");
+  });
+
+  const csvContent =
+    "\uFEFF" +
+    [headers.map(escapeOrderListCsvCell).join(","), ...rows].join("\n");
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  const dateStamp = new Date().toISOString().slice(0, 10);
+  link.href = url;
+  link.setAttribute("download", `daftar-pesanan-soto-banjar-${dateStamp}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function printOrdersPage() {
+  window.print();
+}
+
 export default function AdminOrdersPage() {
+  // State daftar pesanan, loading, filter status, detail pesanan terpilih, dan alert notifikasi
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [selectedOrder, setSelectedOrder] = useState<OrderRecord | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  // State untuk Kotak Alert
   const [alertBox, setAlertBox] = useState<AlertBoxState>({
     visible: false,
     title: "",
@@ -103,6 +204,7 @@ export default function AdminOrdersPage() {
     type: "success",
   });
 
+  // Menampilkan alert notifikasi kustom saat status pesanan berhasil/gagal diubah
   const showCustomAlert = (
     title: string,
     message: string,
@@ -111,10 +213,12 @@ export default function AdminOrdersPage() {
     setAlertBox({ visible: true, title, message, type });
   };
 
+  // Menutup alert notifikasi
   const closeCustomAlert = () => {
     setAlertBox((prev) => ({ ...prev, visible: false }));
   };
 
+  // Memuat pesanan dari API database
   useEffect(() => {
     let isCancelled = false;
 
@@ -129,8 +233,7 @@ export default function AdminOrdersPage() {
               dbOrders = data as OrderRecord[];
             }
           }
-        } catch {
-        }
+        } catch {}
 
         let localOrders: OrderRecord[] = [];
         if (typeof window !== "undefined") {
@@ -144,8 +247,7 @@ export default function AdminOrdersPage() {
                 localOrders = parsed as OrderRecord[];
               }
             }
-          } catch {
-          }
+          } catch {}
         }
 
         const dbMap = new Map<string, OrderRecord>();
@@ -204,6 +306,7 @@ export default function AdminOrdersPage() {
     };
   }, []);
 
+  // Memperbarui status pesanan
   const handleStatusChange = async (ord: OrderRecord, newStatus: string) => {
     const targetKey = normalizeOrderKey(ord);
     const cleanId = targetKey.startsWith("SBN-")
@@ -240,8 +343,7 @@ export default function AdminOrdersPage() {
               );
             }
           }
-        } catch {
-        }
+        } catch {}
       }
 
       const res = await fetch("/api/orders", {
@@ -283,6 +385,7 @@ export default function AdminOrdersPage() {
     }
   };
 
+  // Menyaring daftar pesanan sesuai status yang dipilih
   const filteredOrders = useMemo(() => {
     if (statusFilter === "ALL") return orders;
     return orders.filter(
@@ -301,27 +404,71 @@ export default function AdminOrdersPage() {
         fontFamily: "system-ui, -apple-system, sans-serif",
       }}
     >
+      {/* Header */}
       <header
         style={{
           backgroundColor: "#FFFFFF",
           borderBottom: "1px solid #E5DEC9",
           padding: "18px 32px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: "14px",
         }}
       >
-        <h1
-          style={{
-            margin: 0,
-            fontSize: "22px",
-            fontWeight: 900,
-            color: "#2A1A11",
-          }}
-        >
-          Daftar Pesanan Online Masuk
-        </h1>
-        <p style={{ margin: "3px 0 0", fontSize: "12.5px", color: "#6D4C30" }}>
-          Pantau rincian alamat pengantaran customer dan update status
-          pengiriman.
-        </p>
+        <div>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: "22px",
+              fontWeight: 900,
+              color: "#2A1A11",
+            }}
+          >
+            Daftar Pesanan Online Masuk
+          </h1>
+          <p style={{ margin: "3px 0 0", fontSize: "12.5px", color: "#6D4C30" }}>
+            Pantau rincian alamat pengantaran customer dan update status
+            pengiriman.
+          </p>
+        </div>
+
+        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => exportOrdersListCsv(filteredOrders)}
+            style={{
+              backgroundColor: "#166534",
+              color: "#FFFFFF",
+              border: "none",
+              padding: "10px 16px",
+              borderRadius: "12px",
+              fontSize: "12.5px",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            Export CSV
+          </button>
+
+          <button
+            type="button"
+            onClick={printOrdersPage}
+            style={{
+              backgroundColor: "#2A1A11",
+              color: "#EFE3C8",
+              border: "none",
+              padding: "10px 16px",
+              borderRadius: "12px",
+              fontSize: "12.5px",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            Cetak Daftar Pesanan
+          </button>
+        </div>
       </header>
 
       <div style={{ padding: "32px" }}>
@@ -693,6 +840,7 @@ export default function AdminOrdersPage() {
         </div>
       </div>
 
+      {/* Notifikasi status pesanan */}
       {alertBox.visible && (
         <div
           onClick={closeCustomAlert}
@@ -783,7 +931,7 @@ export default function AdminOrdersPage() {
         </div>
       )}
 
-      {/* DETAIL PESANAN */}
+      {/* Rincian lengkap pesanan */}
       {selectedOrder && (
         <div
           onClick={() => setSelectedOrder(null)}

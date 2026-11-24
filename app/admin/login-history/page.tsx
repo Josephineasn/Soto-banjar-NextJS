@@ -16,7 +16,50 @@ interface LoginLogRecord {
   createdAt?: string;
 }
 
-function normalizeRole(rawRole?: string, rawUsername?: string): "ADMIN" | "CUSTOMER" {
+const DELETED_LOGS_STORAGE_KEY = "soto_deleted_login_logs";
+
+// Membaca daftar ID atau logCode yang sudah dihapus
+function readDeletedLogIds(): Set<string> {
+  if (typeof window === "undefined") return new Set<string>();
+  try {
+    const raw = window.localStorage.getItem(DELETED_LOGS_STORAGE_KEY);
+    if (!raw) return new Set<string>();
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return new Set(parsed.map((x) => String(x).trim()));
+    }
+  } catch {}
+  return new Set<string>();
+}
+
+// Menandai ID atau logCode
+function markLogAsDeleted(idOrCode: string | number) {
+  if (typeof window === "undefined") return;
+  try {
+    const current = readDeletedLogIds();
+    current.add(String(idOrCode).trim());
+    window.localStorage.setItem(
+      DELETED_LOGS_STORAGE_KEY,
+      JSON.stringify(Array.from(current))
+    );
+  } catch {}
+}
+
+function clearDeletedLogMarkers() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(DELETED_LOGS_STORAGE_KEY);
+  } catch {}
+}
+
+function getLogIdentifier(item: LoginLogRecord): string {
+  return String(item.logCode ?? item.id ?? "").trim();
+}
+
+function normalizeRole(
+  rawRole?: string,
+  rawUsername?: string
+): "ADMIN" | "CUSTOMER" {
   const r = String(rawRole || "").toUpperCase();
   const u = String(rawUsername || "").toLowerCase();
   if (r.includes("ADMIN") || u.includes("admin")) {
@@ -25,28 +68,51 @@ function normalizeRole(rawRole?: string, rawUsername?: string): "ADMIN" | "CUSTO
   return "CUSTOMER";
 }
 
-function isFailedStatus(rawStatus?: string): boolean {
-  const s = String(rawStatus || "").toUpperCase();
-  return s.includes("GAGAL") || s.includes("FAIL") || s.includes("ERROR") || s.includes("INVALID");
+// Mendeteksi percobaan login gagal dari status, action, maupun kode FAIL-
+function isFailedStatus(
+  rawStatus?: string,
+  rawAction?: string,
+  rawCode?: string | number
+): boolean {
+  const combined = `${String(rawStatus || "")} ${String(
+    rawAction || ""
+  )} ${String(rawCode || "")}`.toUpperCase();
+  return (
+    combined.includes("GAGAL") ||
+    combined.includes("FAIL") ||
+    combined.includes("SALAH") ||
+    combined.includes("WRONG") ||
+    combined.includes("INVALID") ||
+    combined.includes("ERROR")
+  );
 }
 
+// Mendeteksi aktivitas logout
 function isLogoutStatus(rawStatus?: string, rawId?: string | number): boolean {
   const s = String(rawStatus || "").toUpperCase();
   const idStr = String(rawId || "").toUpperCase();
-  return s.includes("LOGOUT") || s.includes("KELUAR") || idStr.startsWith("OUT-");
+  return (
+    s.includes("LOGOUT") || s.includes("KELUAR") || idStr.startsWith("OUT-")
+  );
 }
 
 export default function AdminLoginHistoryPage() {
+  // State daftar log login, status loading, tab filter
   const [logs, setLogs] = useState<LoginLogRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [tabFilter, setTabFilter] = useState<"ALL" | "SUCCESS" | "FAILED">("ALL");
+  const [tabFilter, setTabFilter] = useState<"ALL" | "SUCCESS" | "FAILED">(
+    "ALL"
+  );
   const [searchQuery, setSearchQuery] = useState<string>("");
 
+  // Memuat riwayat login langsung dari API database Prisma
   useEffect(() => {
     let isCancelled = false;
 
     async function loadLogs() {
       try {
+        const deletedIds = readDeletedLogIds();
+
         let dbLogs: LoginLogRecord[] = [];
         try {
           const res = await fetch("/api/login-history", { cache: "no-store" });
@@ -56,60 +122,62 @@ export default function AdminLoginHistoryPage() {
               dbLogs = data as LoginLogRecord[];
             }
           }
-        } catch {
-        }
+        } catch {}
 
-        let localLogs: LoginLogRecord[] = [];
-        if (typeof window !== "undefined") {
-          try {
-            const rawLocal = window.localStorage.getItem("soto_login_logs");
-            if (rawLocal) {
-              const parsed: unknown = JSON.parse(rawLocal);
-              if (Array.isArray(parsed)) {
-                localLogs = parsed as LoginLogRecord[];
-              }
-            }
-          } catch {
+        const cleaned: LoginLogRecord[] = [];
+        const seenCodes = new Set<string>();
+
+        for (const item of dbLogs) {
+          const code = String(item.logCode || item.id || "").trim();
+          const idStr = item.id !== undefined ? String(item.id).trim() : "";
+          const key = code || idStr;
+          if (!key || seenCodes.has(key)) continue;
+
+          if (
+            (code && deletedIds.has(code)) ||
+            (idStr && deletedIds.has(idStr))
+          ) {
+            continue;
           }
-        }
 
-        const mergedMap = new Map<string, LoginLogRecord>();
+          seenCodes.add(key);
 
-        for (const item of [...dbLogs, ...localLogs]) {
-          const code = String(item.logCode || item.id || `LOG-${Math.random()}`);
           const userLabel =
             item.username ||
             (item.name
               ? `${item.name}${item.email ? ` (${item.email})` : ""}`
               : "Pelanggan");
 
-          const cleanRole = normalizeRole(item.role, userLabel);
-
-          if (!mergedMap.has(code)) {
-            mergedMap.set(code, {
-              ...item,
-              id: code,
-              logCode: code,
-              username: userLabel,
-              role: cleanRole,
-              status: String(item.status || item.action || "LOGIN BERHASIL").toUpperCase(),
-              device:
-                item.device ||
-                item.ipAddress ||
-                (typeof navigator !== "undefined" ? navigator.userAgent : "Web Browser"),
-              createdAt: item.createdAt || new Date().toISOString(),
-            });
-          }
+          cleaned.push({
+            ...item,
+            id: item.id ?? key,
+            logCode: code || idStr,
+            username: userLabel,
+            role: normalizeRole(item.role, userLabel),
+            status: String(item.status || item.action || "LOGIN BERHASIL")
+              .trim()
+              .toUpperCase(),
+            device: item.device || item.ipAddress || "Web Browser",
+            createdAt: item.createdAt || new Date().toISOString(),
+          });
         }
 
-        const sorted = Array.from(mergedMap.values()).sort((a, b) => {
+        cleaned.sort((a, b) => {
           const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
           const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
           return tB - tA;
         });
 
         if (!isCancelled) {
-          setLogs(sorted);
+          setLogs(cleaned);
+          if (typeof window !== "undefined") {
+            try {
+              window.localStorage.setItem(
+                "soto_login_logs",
+                JSON.stringify(cleaned)
+              );
+            } catch {}
+          }
         }
       } catch (err) {
         console.error("Gagal memuat riwayat login:", err);
@@ -134,15 +202,15 @@ export default function AdminLoginHistoryPage() {
     };
   }, []);
 
+  // Menghitung ringkasan total sesi, login berhasil, dan percobaan gagal
   const stats = useMemo(() => {
     let successCount = 0;
     let failedCount = 0;
 
     for (const log of logs) {
-      if (isFailedStatus(log.status)) {
+      if (isFailedStatus(log.status, log.action, log.logCode ?? log.id)) {
         failedCount += 1;
       } else {
-        // Semua aktivitas valid (LOGIN BERHASIL, REGISTER & LOGIN, LOGOUT) dihitung berhasil/valid
         successCount += 1;
       }
     }
@@ -154,9 +222,10 @@ export default function AdminLoginHistoryPage() {
     };
   }, [logs]);
 
+  // Menyaring log
   const filteredLogs = useMemo(() => {
     return logs.filter((log) => {
-      const failed = isFailedStatus(log.status);
+      const failed = isFailedStatus(log.status, log.action, log.logCode ?? log.id);
       if (tabFilter === "SUCCESS" && failed) return false;
       if (tabFilter === "FAILED" && !failed) return false;
 
@@ -166,14 +235,20 @@ export default function AdminLoginHistoryPage() {
         const user = String(log.username || "").toLowerCase();
         const st = String(log.status || "").toLowerCase();
         const rl = String(log.role || "").toLowerCase();
-        return code.includes(q) || user.includes(q) || st.includes(q) || rl.includes(q);
+        return (
+          code.includes(q) ||
+          user.includes(q) ||
+          st.includes(q) ||
+          rl.includes(q)
+        );
       }
 
       return true;
     });
   }, [logs, tabFilter, searchQuery]);
 
-  const handleRecordCurrentSession = () => {
+  // Mencatat akun saat ini ke database Prisma
+  const handleRecordCurrentSession = async () => {
     if (typeof window === "undefined") return;
 
     let activeUser = {
@@ -198,39 +273,75 @@ export default function AdminLoginHistoryPage() {
           role: normalizeRole(parsed.role, parsed.name),
         };
       }
-    } catch {
-    }
+    } catch {}
 
-    const code = `LOG-${Math.floor(100000 + Math.random() * 900000)}`;
-    const newEntry: LoginLogRecord = {
-      id: code,
-      logCode: code,
-      username: `${activeUser.name} (${activeUser.email})`,
-      role: normalizeRole(activeUser.role, activeUser.name),
-      status: "LOGIN BERHASIL",
-      device: navigator.userAgent,
-      createdAt: new Date().toISOString(),
-    };
+    const usernameText = `${activeUser.name} (${activeUser.email})`;
+    const roleText = normalizeRole(activeUser.role, activeUser.name);
 
-    const updated = [newEntry, ...logs];
-    setLogs(updated);
-    window.localStorage.setItem("soto_login_logs", JSON.stringify(updated));
+    try {
+      const res = await fetch("/api/login-history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: usernameText,
+          role: roleText,
+          action: "LOGIN",
+          status: "LOGIN BERHASIL",
+          device: navigator.userAgent,
+        }),
+      });
+      if (res.ok) {
+        const created = (await res.json()) as LoginLogRecord;
+        setLogs((prev) => {
+          const exists = prev.some(
+            (p) => String(p.logCode || p.id) === String(created.logCode || created.id)
+          );
+          return exists ? prev : [created, ...prev];
+        });
+      }
+    } catch {}
   };
 
-  const handleDeleteLog = (targetCode: string) => {
-    const updated = logs.filter(
-      (item) => String(item.logCode || item.id) !== targetCode
-    );
+  // Menghapus satu log di state, localStorage, dan database Prisma
+  const handleDeleteLog = (targetLog: LoginLogRecord) => {
+    const code = getLogIdentifier(targetLog);
+    const rawId = targetLog.id !== undefined ? String(targetLog.id).trim() : code;
+
+    if (code) markLogAsDeleted(code);
+    if (rawId) markLogAsDeleted(rawId);
+
+    const updated = logs.filter((item) => {
+      const itemCode = getLogIdentifier(item);
+      const itemId =
+        item.id !== undefined ? String(item.id).trim() : itemCode;
+      return itemCode !== code && itemId !== rawId;
+    });
+
     setLogs(updated);
+
     if (typeof window !== "undefined") {
-      window.localStorage.setItem("soto_login_logs", JSON.stringify(updated));
+      try {
+        window.localStorage.setItem("soto_login_logs", JSON.stringify(updated));
+      } catch {}
     }
+
+    const queryParam = encodeURIComponent(rawId || code);
+    void fetch(
+      `/api/login-history?id=${queryParam}&code=${encodeURIComponent(code)}`,
+      {
+        method: "DELETE",
+      }
+    ).catch(() => {});
   };
 
+  // Menghapus semua riwayat login di klien dan database Prisma
   const handleClearAllLogs = () => {
+    clearDeletedLogMarkers();
     setLogs([]);
     if (typeof window !== "undefined") {
-      window.localStorage.removeItem("soto_login_logs");
+      try {
+        window.localStorage.removeItem("soto_login_logs");
+      } catch {}
     }
     void fetch("/api/login-history", { method: "DELETE" }).catch(() => {});
   };
@@ -269,7 +380,9 @@ export default function AdminLoginHistoryPage() {
           >
             Riwayat Aktivitas Login
           </h1>
-          <p style={{ margin: "3px 0 0", fontSize: "12.5px", color: "#6D4C30" }}>
+          <p
+            style={{ margin: "3px 0 0", fontSize: "12.5px", color: "#6D4C30" }}
+          >
             Pencatatan sesi masuk customer dan pengelola admin secara otomatis
             (Tersinkronisasi dengan Prisma Database).
           </p>
@@ -278,7 +391,7 @@ export default function AdminLoginHistoryPage() {
         <div style={{ display: "flex", gap: "10px" }}>
           <button
             type="button"
-            onClick={handleRecordCurrentSession}
+            onClick={() => void handleRecordCurrentSession()}
             style={{
               padding: "9px 16px",
               borderRadius: "999px",
@@ -319,7 +432,6 @@ export default function AdminLoginHistoryPage() {
           gap: "24px",
         }}
       >
-        {/* 3 KARTU RINGKASAN */}
         <div
           style={{
             display: "grid",
@@ -468,7 +580,6 @@ export default function AdminLoginHistoryPage() {
           </div>
         </div>
 
-        {/* TABEL AKTIVITAS */}
         <div
           style={{
             backgroundColor: "#FFFFFF",
@@ -496,8 +607,7 @@ export default function AdminLoginHistoryPage() {
                   borderRadius: "999px",
                   border:
                     tabFilter === "ALL" ? "none" : "1.5px solid #E5DEC9",
-                  backgroundColor:
-                    tabFilter === "ALL" ? "#2A1A11" : "#FAF6EE",
+                  backgroundColor: tabFilter === "ALL" ? "#2A1A11" : "#FAF6EE",
                   color: tabFilter === "ALL" ? "#EFE3C8" : "#6D4C30",
                   fontSize: "12px",
                   fontWeight: 800,
@@ -613,11 +723,16 @@ export default function AdminLoginHistoryPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredLogs.map((log) => {
-                    const code = String(log.logCode || log.id);
+                  {filteredLogs.map((log, idx) => {
+                    const code = String(log.logCode || log.id || idx);
+                    const rowKey = `${code}-${log.createdAt || idx}`;
                     const roleText = normalizeRole(log.role, log.username);
                     const isAdmin = roleText === "ADMIN";
-                    const failed = isFailedStatus(log.status);
+                    const failed = isFailedStatus(
+                      log.status,
+                      log.action,
+                      code
+                    );
                     const isLogout = isLogoutStatus(log.status, code);
 
                     const timeStr = log.createdAt
@@ -632,7 +747,7 @@ export default function AdminLoginHistoryPage() {
 
                     return (
                       <tr
-                        key={code}
+                        key={rowKey}
                         style={{
                           borderBottom: "1px solid #EFE3C8",
                           color: "#2A1A11",
@@ -709,7 +824,7 @@ export default function AdminLoginHistoryPage() {
                         <td style={{ padding: "14px 10px" }}>
                           <button
                             type="button"
-                            onClick={() => handleDeleteLog(code)}
+                            onClick={() => handleDeleteLog(log)}
                             style={{
                               padding: "5px 12px",
                               borderRadius: "6px",

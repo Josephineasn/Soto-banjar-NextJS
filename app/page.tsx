@@ -22,6 +22,14 @@ export interface UserSession {
   phone?: string;
 }
 
+const SPICY_OPTIONS = ["semua", "Tidak Pedas", "Sedang", "Pedas"] as const;
+const PRICE_SORT_OPTIONS = [
+  { id: "default", label: "Default" },
+  { id: "asc", label: "Harga Terendah" },
+  { id: "desc", label: "Harga Tertinggi" },
+] as const;
+type PriceSortType = (typeof PRICE_SORT_OPTIONS)[number]["id"];
+
 function formatCategoryLabel(slug: string): string {
   return slug
     .split(" ")
@@ -50,6 +58,9 @@ export default function Home() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [category, setCategory] = useState("semua");
+
+  const [priceSort, setPriceSort] = useState<PriceSortType>("default");
+  const [spicyFilter, setSpicyFilter] = useState<string>("semua");
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
@@ -237,17 +248,50 @@ export default function Home() {
     ];
   }, [serverCategories]);
 
+  function resetExtraFilters() {
+    setPriceSort("default");
+    setSpicyFilter("semua");
+  }
+
   const filteredMenus = useMemo(() => {
-    return menus.filter((menu) => {
+    const filtered = menus.filter((menu) => {
       const menuCat = String(menu.category || "").trim().toLowerCase();
       const selectedCat = category.trim().toLowerCase();
       const matchCategory = selectedCat === "semua" || menuCat === selectedCat;
       const matchSearch = menu.name
         .toLowerCase()
         .includes(searchQuery.toLowerCase());
-      return matchCategory && matchSearch;
+
+      const rawMenu = menu as MenuItem & {
+        spicyLevel?: string | null;
+        spiceLevel?: string | null;
+        pedas?: string | null;
+      };
+      const itemSpicy = String(
+        rawMenu.spicyLevel ?? rawMenu.spiceLevel ?? rawMenu.pedas ?? ""
+      )
+        .trim()
+        .toLowerCase();
+      const matchSpicy =
+        spicyFilter.toLowerCase() === "semua" ||
+        itemSpicy === spicyFilter.trim().toLowerCase();
+
+      return matchCategory && matchSearch && matchSpicy;
     });
-  }, [menus, category, searchQuery]);
+
+    if (priceSort === "asc") {
+      return [...filtered].sort(
+        (a, b) => Number(a.price ?? 0) - Number(b.price ?? 0)
+      );
+    }
+    if (priceSort === "desc") {
+      return [...filtered].sort(
+        (a, b) => Number(b.price ?? 0) - Number(a.price ?? 0)
+      );
+    }
+    return filtered;
+  }, [menus, category, searchQuery, priceSort, spicyFilter]);
+  // === [AKHIR DIGANTI] ===
 
   function addToCartOnly(item: MenuItem) {
     if (!currentUser) {
@@ -400,7 +444,7 @@ export default function Home() {
           gap: "12px",
           overflowX: "auto",
           paddingBottom: "10px",
-          marginBottom: "36px",
+          marginBottom: "24px",
           scrollbarWidth: "none",
         }}
       >
@@ -435,6 +479,122 @@ export default function Home() {
             </button>
           );
         })}
+      </div>
+
+      <div
+        style={{
+          backgroundColor: "#EFE3C8",
+          border: "1.5px solid #8A6B47",
+          borderRadius: "16px",
+          padding: "16px 20px",
+          marginBottom: "32px",
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "16px",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: "8px",
+          }}
+        >
+          <span
+            style={{
+              fontSize: "12px",
+              fontWeight: 800,
+              color: "#2A1A11",
+              marginRight: "4px",
+            }}
+          >
+            Urutkan Harga:
+          </span>
+          {PRICE_SORT_OPTIONS.map((opt) => {
+            const active = priceSort === opt.id;
+            return (
+              <button
+                type="button"
+                key={opt.id}
+                onClick={() => setPriceSort(opt.id)}
+                style={{
+                  padding: "7px 14px",
+                  borderRadius: "20px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  border: active ? "1.5px solid #2A1A11" : "1.5px solid #8A6B47",
+                  backgroundColor: active ? "#2A1A11" : "#FFFFFF",
+                  color: active ? "#EFE3C8" : "#2A1A11",
+                }}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: "8px",
+          }}
+        >
+          <span
+            style={{
+              fontSize: "12px",
+              fontWeight: 800,
+              color: "#2A1A11",
+              marginRight: "4px",
+            }}
+          >
+            Level Pedas:
+          </span>
+          {SPICY_OPTIONS.map((opt) => {
+            const active = spicyFilter.toLowerCase() === opt.toLowerCase();
+            return (
+              <button
+                type="button"
+                key={opt}
+                onClick={() => setSpicyFilter(opt)}
+                style={{
+                  padding: "7px 14px",
+                  borderRadius: "20px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  border: active ? "1.5px solid #2A1A11" : "1.5px solid #8A6B47",
+                  backgroundColor: active ? "#2A1A11" : "#FFFFFF",
+                  color: active ? "#EFE3C8" : "#2A1A11",
+                }}
+              >
+                {opt === "semua" ? "Semua Level" : opt}
+              </button>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={resetExtraFilters}
+            style={{
+              padding: "7px 12px",
+              borderRadius: "20px",
+              fontSize: "12px",
+              fontWeight: 800,
+              cursor: "pointer",
+              border: "1.5px solid #8A6B47",
+              backgroundColor: "transparent",
+              color: "#432818",
+            }}
+          >
+            Reset
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -473,7 +633,7 @@ export default function Home() {
             fontWeight: "600",
           }}
         >
-          {`Pencarian "${searchQuery}" tidak ditemukan pada kategori ini.`}
+          {`Pencarian "${searchQuery}" tidak ditemukan pada kategori atau filter ini.`}
         </div>
       ) : (
         <div

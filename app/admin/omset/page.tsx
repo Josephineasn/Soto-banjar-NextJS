@@ -39,11 +39,32 @@ interface OrderRecord {
   items?: OrderItem[];
 }
 
+// Daftar opsi bulan (1-12) dan tanggal hari (1-31) untuk filter periode omset
+const MONTH_OPTIONS = [
+  { value: "ALL", label: "Semua Bulan" },
+  { value: "1", label: "Januari" },
+  { value: "2", label: "Februari" },
+  { value: "3", label: "Maret" },
+  { value: "4", label: "April" },
+  { value: "5", label: "Mei" },
+  { value: "6", label: "Juni" },
+  { value: "7", label: "Juli" },
+  { value: "8", label: "Agustus" },
+  { value: "9", label: "September" },
+  { value: "10", label: "Oktober" },
+  { value: "11", label: "November" },
+  { value: "12", label: "Desember" },
+] as const;
+
+const DAY_OPTIONS = Array.from({ length: 31 }, (_, i) => String(i + 1));
+
+// Menyeragamkan kode pesanan tanpa awalan '#' agar pencocokan data akurat
 function normalizeOrderKey(ord: OrderRecord): string {
   const raw = String(ord.orderNumber || ord.orderCode || ord.id || "");
   return raw.replace(/^#/, "").trim().toUpperCase();
 }
 
+// Menghitung total pembayaran akhir dari item, ongkir, biaya thermal bag, dan diskon
 function getOrderTotal(ord: OrderRecord): number {
   const itemsSub = Array.isArray(ord.items)
     ? ord.items.reduce(
@@ -68,6 +89,7 @@ function getOrderTotal(ord: OrderRecord): number {
   );
 }
 
+// Menghitung subtotal penjualan menu murni di luar ongkir
 function getItemsSubtotal(ord: OrderRecord): number {
   if (Array.isArray(ord.items) && ord.items.length > 0) {
     return ord.items.reduce(
@@ -79,11 +101,118 @@ function getItemsSubtotal(ord: OrderRecord): number {
   return Number(ord.subtotal ?? getOrderTotal(ord));
 }
 
+// Membungkus isi kolom CSV dengan tanda kutip ganda agar aman terhadap karakter koma
+function escapeOmsetCsvField(value: unknown): string {
+  const str = String(value ?? "");
+  return `"${str.replace(/"/g, '""')}"`;
+}
+
+// Menyusun ringkasan daftar item terjual dalam satu baris teks untuk kolom CSV
+function formatItemsSummaryForCsv(ord: OrderRecord): string {
+  if (!Array.isArray(ord.items) || ord.items.length === 0) {
+    return "Paket Soto Banjar";
+  }
+  return ord.items
+    .map(
+      (it) =>
+        `${it.qty || it.quantity || 1}x ${it.name || it.title || "Menu"}`
+    )
+    .join("; ");
+}
+
+// Mengunduh laporan rincian omset yang sedang tampil ke dalam file CSV
+function exportOmsetCsv(orderList: OrderRecord[], filterLabel: string) {
+  if (!orderList.length) {
+    alert("Tidak ada data transaksi omset untuk di-export.");
+    return;
+  }
+
+  const headers = [
+    "No",
+    "Tanggal & Waktu",
+    "ID Order",
+    "Pelanggan",
+    "Item Terjual",
+    "Metode Bayar",
+    "Subtotal Menu (Rp)",
+    "Ongkir & Layanan (Rp)",
+    "Total Masuk (Rp)",
+    "Status",
+  ];
+
+  const rows = orderList.map((ord, idx) => {
+    const key = normalizeOrderKey(ord);
+    const codeText = key.startsWith("SBN-") ? `#${key}` : `#SBN-${key}`;
+    const custName =
+      ord.customerName || ord.recipientName || ord.name || "Pelanggan";
+    const menuSub = getItemsSubtotal(ord);
+    const shipFee = Number(ord.shippingCost ?? ord.shippingFee ?? 0);
+    const totalAmt = getOrderTotal(ord);
+    const st = String(ord.status || "PENDING").toUpperCase();
+    const dateLabel = ord.createdAt
+      ? new Date(ord.createdAt).toLocaleString("id-ID", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "Baru saja";
+
+    return [
+      idx + 1,
+      dateLabel,
+      codeText,
+      custName,
+      formatItemsSummaryForCsv(ord),
+      ord.paymentMethod || "BCA Virtual Account",
+      menuSub,
+      shipFee,
+      totalAmt,
+      st,
+    ]
+      .map(escapeOmsetCsvField)
+      .join(",");
+  });
+
+  const totalMasukSum = orderList.reduce((acc, o) => acc + getOrderTotal(o), 0);
+  rows.push(
+    ["", "", "", "", "", `TOTAL (${filterLabel})`, "", "", totalMasukSum, ""]
+      .map(escapeOmsetCsvField)
+      .join(",")
+  );
+
+  // Menggunakan UTF-8 BOM (\uFEFF) agar kolom dan karakter rapi saat dibuka di Excel
+  const csvContent =
+    "\uFEFF" + [headers.map(escapeOmsetCsvField).join(","), ...rows].join("\n");
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  const dateStamp = new Date().toISOString().slice(0, 10);
+  link.href = url;
+  link.setAttribute("download", `omset-soto-banjar-${dateStamp}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// Membuka dialog cetak / simpan PDF browser untuk laporan omset
+function printOmsetPage() {
+  window.print();
+}
+
 export default function AdminOmsetPage() {
+  // State daftar pesanan, loading, filter status transaksi, dan filter periode (hari, bulan, tahun)
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [dayFilter, setDayFilter] = useState<string>("ALL");
+  const [monthFilter, setMonthFilter] = useState<string>("ALL");
+  const [yearFilter, setYearFilter] = useState<string>("ALL");
 
+  // Memuat dan menggabungkan data pesanan dari API database dan localStorage secara real-time
   useEffect(() => {
     let isCancelled = false;
 
@@ -98,8 +227,7 @@ export default function AdminOmsetPage() {
               dbOrders = data as OrderRecord[];
             }
           }
-        } catch {
-        }
+        } catch {}
 
         let localOrders: OrderRecord[] = [];
         if (typeof window !== "undefined") {
@@ -113,8 +241,7 @@ export default function AdminOmsetPage() {
                 localOrders = parsed as OrderRecord[];
               }
             }
-          } catch {
-          }
+          } catch {}
         }
 
         const mergedMap = new Map<string, OrderRecord>();
@@ -167,6 +294,7 @@ export default function AdminOmsetPage() {
     };
   }, []);
 
+  // Mengeluarkan pesanan yang dibatalkan dari perhitungan omset
   const validOrders = useMemo(
     () =>
       orders.filter((o) => {
@@ -176,6 +304,54 @@ export default function AdminOmsetPage() {
     [orders]
   );
 
+  // Daftar tahun dari transaksi yang tersedia untuk dropdown filter tahun
+  const availableYears = useMemo(() => {
+    const yearSet = new Set<string>();
+    yearSet.add(String(new Date().getFullYear()));
+    for (const ord of validOrders) {
+      if (!ord.createdAt) continue;
+      const d = new Date(ord.createdAt);
+      if (!Number.isNaN(d.getTime())) {
+        yearSet.add(String(d.getFullYear()));
+      }
+    }
+    return Array.from(yearSet).sort((a, b) => Number(b) - Number(a));
+  }, [validOrders]);
+
+  // Menyaring transaksi berdasarkan hari (tanggal), bulan, dan tahun yang dipilih
+  const dateFilteredOrders = useMemo(() => {
+    return validOrders.filter((ord) => {
+      if (
+        dayFilter === "ALL" &&
+        monthFilter === "ALL" &&
+        yearFilter === "ALL"
+      ) {
+        return true;
+      }
+
+      if (!ord.createdAt) return false;
+      const d = new Date(ord.createdAt);
+      if (Number.isNaN(d.getTime())) return false;
+
+      const matchDay =
+        dayFilter === "ALL" || String(d.getDate()) === dayFilter;
+      const matchMonth =
+        monthFilter === "ALL" || String(d.getMonth() + 1) === monthFilter;
+      const matchYear =
+        yearFilter === "ALL" || String(d.getFullYear()) === yearFilter;
+
+      return matchDay && matchMonth && matchYear;
+    });
+  }, [validOrders, dayFilter, monthFilter, yearFilter]);
+
+  // Mengembalikan seluruh filter periode tanggal ke posisi semua periode
+  function handleResetDateFilter() {
+    setDayFilter("ALL");
+    setMonthFilter("ALL");
+    setYearFilter("ALL");
+  }
+
+  // Menghitung ringkasan angka omset keseluruhan, selesai, berjalan, dan penjualan menu
   const summary = useMemo(() => {
     let totalGross = 0;
     let completedRevenue = 0;
@@ -185,7 +361,7 @@ export default function AdminOmsetPage() {
     let completedCount = 0;
     let activeCount = 0;
 
-    for (const ord of validOrders) {
+    for (const ord of dateFilteredOrders) {
       const grand = getOrderTotal(ord);
       const menuSub = getItemsSubtotal(ord);
       const ship = Number(ord.shippingCost ?? ord.shippingFee ?? 0);
@@ -210,15 +386,16 @@ export default function AdminOmsetPage() {
       pendingRevenue,
       totalMenuSales,
       totalShipping,
-      totalCount: validOrders.length,
+      totalCount: dateFilteredOrders.length,
       completedCount,
       activeCount,
     };
-  }, [validOrders]);
+  }, [dateFilteredOrders]);
 
+  // Menyaring daftar transaksi yang ditampilkan di tabel sesuai filter
   const displayedOrders = useMemo(() => {
-    if (statusFilter === "ALL") return validOrders;
-    return validOrders.filter((ord) => {
+    if (statusFilter === "ALL") return dateFilteredOrders;
+    return dateFilteredOrders.filter((ord) => {
       const st = String(ord.status || "PENDING").toUpperCase();
       if (statusFilter === "SELESAI") {
         return st === "SELESAI" || st === "COMPLETED" || st === "TERKIRIM";
@@ -234,7 +411,14 @@ export default function AdminOmsetPage() {
       }
       return true;
     });
-  }, [validOrders, statusFilter]);
+  }, [dateFilteredOrders, statusFilter]);
+
+  const activeFilterLabel =
+    statusFilter === "SELESAI"
+      ? "Selesai"
+      : statusFilter === "PROSES"
+      ? "Berjalan"
+      : "Semua";
 
   return (
     <div
@@ -246,6 +430,7 @@ export default function AdminOmsetPage() {
         minHeight: "100vh",
       }}
     >
+      {/* Header */}
       <header
         style={{
           backgroundColor: "#FFFFFF",
@@ -254,6 +439,8 @@ export default function AdminOmsetPage() {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
+          flexWrap: "wrap",
+          gap: "14px",
         }}
       >
         <div>
@@ -274,6 +461,42 @@ export default function AdminOmsetPage() {
             Selera Nusantara.
           </p>
         </div>
+
+        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => exportOmsetCsv(displayedOrders, activeFilterLabel)}
+            style={{
+              backgroundColor: "#166534",
+              color: "#FFFFFF",
+              border: "none",
+              padding: "10px 16px",
+              borderRadius: "12px",
+              fontSize: "12.5px",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            Export CSV
+          </button>
+
+          <button
+            type="button"
+            onClick={printOmsetPage}
+            style={{
+              backgroundColor: "#2A1A11",
+              color: "#EFE3C8",
+              border: "none",
+              padding: "10px 16px",
+              borderRadius: "12px",
+              fontSize: "12.5px",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            Cetak Laporan
+          </button>
+        </div>
       </header>
 
       <div
@@ -284,7 +507,127 @@ export default function AdminOmsetPage() {
           gap: "24px",
         }}
       >
-        {/* RINGKASAN OMSET */}
+        {/* Filter periode omset berdasarkan hari (tanggal), bulan, dan tahun */}
+        <div
+          style={{
+            backgroundColor: "#FFFFFF",
+            borderRadius: "18px",
+            padding: "16px 20px",
+            border: "1.5px solid #E5DEC9",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "12px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "13px",
+              fontWeight: 900,
+              color: "#2A1A11",
+            }}
+          >
+            Filter Periode Omset (Hari, Bulan, Tahun)
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "10px",
+            }}
+          >
+            <select
+              value={dayFilter}
+              onChange={(e) => setDayFilter(e.target.value)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: "10px",
+                border: "1.5px solid #D6C7B2",
+                backgroundColor: "#FAF6EE",
+                fontSize: "13px",
+                fontWeight: 800,
+                color: "#2A1A11",
+                cursor: "pointer",
+              }}
+            >
+              <option value="ALL">Semua Hari</option>
+              {DAY_OPTIONS.map((d) => (
+                <option key={d} value={d}>
+                  Tanggal {d}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={monthFilter}
+              onChange={(e) => setMonthFilter(e.target.value)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: "10px",
+                border: "1.5px solid #D6C7B2",
+                backgroundColor: "#FAF6EE",
+                fontSize: "13px",
+                fontWeight: 800,
+                color: "#2A1A11",
+                cursor: "pointer",
+              }}
+            >
+              {MONTH_OPTIONS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={yearFilter}
+              onChange={(e) => setYearFilter(e.target.value)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: "10px",
+                border: "1.5px solid #D6C7B2",
+                backgroundColor: "#FAF6EE",
+                fontSize: "13px",
+                fontWeight: 800,
+                color: "#2A1A11",
+                cursor: "pointer",
+              }}
+            >
+              <option value="ALL">Semua Tahun</option>
+              {availableYears.map((yr) => (
+                <option key={yr} value={yr}>
+                  Tahun {yr}
+                </option>
+              ))}
+            </select>
+
+            {(dayFilter !== "ALL" ||
+              monthFilter !== "ALL" ||
+              yearFilter !== "ALL") && (
+              <button
+                type="button"
+                onClick={handleResetDateFilter}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: "10px",
+                  border: "1.5px solid #8A6B47",
+                  backgroundColor: "#2A1A11",
+                  color: "#EFE3C8",
+                  fontSize: "12.5px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                Reset Periode
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Ringkasan omset */}
         <div
           style={{
             display: "grid",
@@ -434,7 +777,7 @@ export default function AdminOmsetPage() {
           </div>
         </div>
 
-        {/* TABEL RINCIAN TRANSAKSI OMSET */}
+        {/* Tabel rincian pendapatan per transaksi */}
         <div
           style={{
             backgroundColor: "#FFFFFF",

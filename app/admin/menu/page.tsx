@@ -21,12 +21,125 @@ interface MenuItem {
   isFavorite?: boolean;
   isRecommended?: boolean;
   available?: boolean;
+  badge?: string | null;
+  badgeColor?: string | null;
 }
 
-function checkIsRecommended(item: MenuItem): boolean {
-  return Boolean(item.popular ?? item.isRecommended ?? item.isFavorite);
+export interface BadgeMetaEntry {
+  badge: string;
+  badgeColor: string;
 }
 
+const DEFAULT_BADGE_PRESETS = ["Sold Out", "Best Seller", "Rekomendasi", "Pedas"] as const;
+
+// Palet warna badge yang bisa dipilih admin untuk tiap menu
+const BADGE_COLOR_PALETTE = [
+  { id: "amber", label: "Emas", bg: "#D97706", text: "#FFFFFF" },
+  { id: "red", label: "Merah", bg: "#DC2626", text: "#FFFFFF" },
+  { id: "brown", label: "Coklat Tua", bg: "#2A1A11", text: "#EFE3C8" },
+  { id: "green", label: "Hijau", bg: "#15803D", text: "#FFFFFF" },
+  { id: "blue", label: "Biru", bg: "#1D4ED8", text: "#FFFFFF" },
+  { id: "purple", label: "Ungu", bg: "#7E22CE", text: "#FFFFFF" },
+  { id: "pink", label: "Pink", bg: "#DB2777", text: "#FFFFFF" },
+] as const;
+
+const MENU_BADGE_MAP_KEY = "soto_menu_badge_map";
+const CUSTOM_BADGE_LIST_KEY = "soto_custom_badge_presets";
+
+function readMenuBadgeMap(): Record<string, BadgeMetaEntry> {
+  try {
+    const raw = localStorage.getItem(MENU_BADGE_MAP_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === "object"
+      ? (parsed as Record<string, BadgeMetaEntry>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveMenuBadgeMapEntry(
+  menuId: string | number,
+  entry: BadgeMetaEntry | null
+) {
+  try {
+    const current = readMenuBadgeMap();
+    const key = String(menuId);
+    if (!entry || !entry.badge.trim()) {
+      delete current[key];
+    } else {
+      current[key] = {
+        badge: entry.badge.trim(),
+        badgeColor: entry.badgeColor || "amber",
+      };
+    }
+    localStorage.setItem(MENU_BADGE_MAP_KEY, JSON.stringify(current));
+  } catch {}
+}
+
+function readCustomBadgePresets(): string[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_BADGE_LIST_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.map((x) => String(x).trim()).filter(Boolean)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+// Menyimpan teks badge custom
+function saveCustomBadgePreset(label: string) {
+  const clean = label.trim();
+  if (!clean) return;
+  try {
+    const existing = readCustomBadgePresets();
+    const exists = existing.some(
+      (item) => item.toLowerCase() === clean.toLowerCase()
+    );
+    const defaultExists = DEFAULT_BADGE_PRESETS.some(
+      (item) => item.toLowerCase() === clean.toLowerCase()
+    );
+    if (!exists && !defaultExists) {
+      localStorage.setItem(
+        CUSTOM_BADGE_LIST_KEY,
+        JSON.stringify([...existing, clean])
+      );
+    }
+  } catch {}
+}
+
+// Mengambil warna tampilan badge
+function getBadgeStyleFromPalette(badgeText: string, badgeColor?: string | null) {
+  const key = String(badgeColor ?? "").trim().toLowerCase();
+  const matched = BADGE_COLOR_PALETTE.find((c) => c.id === key);
+  if (matched) {
+    return { background: matched.bg, color: matched.text };
+  }
+
+  const lower = badgeText.trim().toLowerCase();
+  if (lower === "sold out" || lower === "habis" || lower.includes("pedas")) {
+    return { background: "#DC2626", color: "#FFFFFF" };
+  }
+  if (
+    lower.includes("rekomendasi") ||
+    lower.includes("best") ||
+    lower.includes("terlaris")
+  ) {
+    return { background: "#D97706", color: "#FFFFFF" };
+  }
+  return { background: "#2A1A11", color: "#EFE3C8" };
+}
+
+function isSoldOutBadgeText(badgeText: string): boolean {
+  const n = badgeText.trim().toLowerCase();
+  return n === "sold out" || n === "habis";
+}
+
+// Merapikan format
 function formatSpicesText(raw: unknown): string {
   if (!raw) return "";
   if (Array.isArray(raw)) {
@@ -58,6 +171,7 @@ function formatSpicesText(raw: unknown): string {
 }
 
 export default function AdminMenuPage() {
+  // State daftar menu, kategori, loading, dan filter pencarian
   const [menus, setMenus] = useState<MenuItem[]>([]);
   const [categoryList, setCategoryList] = useState<string[]>([
     "makanan",
@@ -66,10 +180,10 @@ export default function AdminMenuPage() {
     "minuman",
   ]);
   const [loading, setLoading] = useState<boolean>(true);
-
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
 
+  // State modal kelola kategori (tambah, edit nama, dan hapus kategori)
   const [isCatModalOpen, setIsCatModalOpen] = useState<boolean>(false);
   const [newCatInput, setNewCatInput] = useState<string>("");
   const [editingCatOldName, setEditingCatOldName] = useState<string | null>(
@@ -77,6 +191,7 @@ export default function AdminMenuPage() {
   );
   const [editingCatNewName, setEditingCatNewName] = useState<string>("");
 
+  // State modal form tambah/edit menu beserta badge dan warnanya
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingMenu, setEditingMenu] = useState<MenuItem | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -93,7 +208,39 @@ export default function AdminMenuPage() {
   const [packagingInfo, setPackagingInfo] = useState<string>(
     "Kemasan thermal pouch tahan panas"
   );
-  const [popular, setPopular] = useState<boolean>(false);
+  const [badge, setBadge] = useState<string>("");
+  const [badgeColor, setBadgeColor] = useState<string>("amber");
+  const [newBadgeOptionInput, setNewBadgeOptionInput] = useState<string>("");
+  const [customBadgeList, setCustomBadgeList] = useState<string[]>(() =>
+    readCustomBadgePresets()
+  );
+
+  // Menggabungkan data menu dari API dengan data badge custom di localStorage
+  function enrichMenusWithBadgeMap(rawList: MenuItem[]): MenuItem[] {
+    const badgeMap = readMenuBadgeMap();
+    return rawList.map((item) => {
+      const savedEntry = badgeMap[String(item.id)];
+      const apiBadge = String(item.badge ?? "").trim();
+      const fallbackBadge =
+        savedEntry?.badge ||
+        (item.available === false
+          ? "Sold Out"
+          : item.popular || item.isRecommended || item.isFavorite
+          ? "Rekomendasi"
+          : "");
+      const resolvedBadge = apiBadge || fallbackBadge;
+      const resolvedColor =
+        item.badgeColor ||
+        savedEntry?.badgeColor ||
+        (isSoldOutBadgeText(resolvedBadge) ? "red" : "amber");
+
+      return {
+        ...item,
+        badge: resolvedBadge || null,
+        badgeColor: resolvedBadge ? resolvedColor : null,
+      };
+    });
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -108,7 +255,7 @@ export default function AdminMenuPage() {
         if (menuRes.ok && isMounted) {
           const menuData: unknown = await menuRes.json();
           if (Array.isArray(menuData)) {
-            setMenus(menuData as MenuItem[]);
+            setMenus(enrichMenusWithBadgeMap(menuData as MenuItem[]));
           }
         }
 
@@ -141,6 +288,17 @@ export default function AdminMenuPage() {
     } catch {}
   }
 
+  // Menambahkan pilihan badge baru
+  function handleAddCustomBadgeOption() {
+    const clean = newBadgeOptionInput.trim();
+    if (!clean) return;
+    saveCustomBadgePreset(clean);
+    setCustomBadgeList(readCustomBadgePresets());
+    setBadge(clean);
+    setNewBadgeOptionInput("");
+  }
+
+  // Mengirim request POST untuk menambah kategori baru ke database
   async function handleAddCategory(e: React.FormEvent) {
     e.preventDefault();
     const clean = newCatInput.trim().toLowerCase();
@@ -165,6 +323,7 @@ export default function AdminMenuPage() {
     setSelectedCategory(clean);
   }
 
+  // Mengirim request PATCH untuk mengubah nama kategori yang sudah ada
   async function handleSaveEditCategory(oldName: string) {
     const cleanNew = editingCatNewName.trim().toLowerCase();
     if (!cleanNew || cleanNew === oldName) {
@@ -201,6 +360,7 @@ export default function AdminMenuPage() {
     setEditingCatNewName("");
   }
 
+  // Mengirim request DELETE untuk menghapus kategori dan memindahkan menunya ke kategori makanan
   async function handleDeleteCategory(catName: string) {
     if (
       !confirm(
@@ -235,6 +395,7 @@ export default function AdminMenuPage() {
     }
   }
 
+  // Menyiapkan nilai awal form lalu membuka tambah menu baru
   function openAddModal() {
     setEditingMenu(null);
     setName("");
@@ -249,10 +410,13 @@ export default function AdminMenuPage() {
     setDescription("");
     setSpices("Kayu manis, kapulaga, cengkih, pala");
     setPackagingInfo("Kemasan thermal pouch tahan panas");
-    setPopular(false);
+    setBadge("");
+    setBadgeColor("amber");
+    setNewBadgeOptionInput("");
     setIsModalOpen(true);
   }
 
+  // Mengisi form dengan data item menu yang dipilih untuk diedit
   function openEditModal(item: MenuItem) {
     setEditingMenu(item);
     setName(item.name || "");
@@ -277,41 +441,16 @@ export default function AdminMenuPage() {
       "Kemasan thermal pouch tahan panas";
     setPackagingInfo(String(rawPack));
 
-    setPopular(checkIsRecommended(item));
+    const currentBadge = String(item.badge ?? "").trim();
+    setBadge(currentBadge);
+    setBadgeColor(
+      item.badgeColor || (isSoldOutBadgeText(currentBadge) ? "red" : "amber")
+    );
+    setNewBadgeOptionInput("");
     setIsModalOpen(true);
   }
 
-  async function handleToggleRecommendCard(item: MenuItem) {
-    const nextPopular = !checkIsRecommended(item);
-    setMenus((prev) =>
-      prev.map((m) =>
-        m.id === item.id
-          ? {
-              ...m,
-              popular: nextPopular,
-              isRecommended: nextPopular,
-              isFavorite: nextPopular,
-            }
-          : m
-      )
-    );
-
-    try {
-      await fetch(`/api/menu/${item.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          popular: nextPopular,
-          isRecommended: nextPopular,
-          isFavorite: nextPopular,
-        }),
-      });
-      notifyCustomerSync();
-    } catch (err) {
-      console.error("Gagal mengubah status rekomendasi:", err);
-    }
-  }
-
+  // Menyimpan data menu baru (POST) atau perubahan menu (PATCH)
   async function handleSaveMenu(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
@@ -327,6 +466,18 @@ export default function AdminMenuPage() {
     const calNumber = Number(String(calories).replace(/[^0-9]/g, "")) || 350;
     const formattedCalories = `${calNumber} kkal`;
 
+    const cleanBadge = badge.trim();
+    if (cleanBadge) {
+      saveCustomBadgePreset(cleanBadge);
+      setCustomBadgeList(readCustomBadgePresets());
+    }
+
+    const isSoldOut = isSoldOutBadgeText(cleanBadge);
+    const isRecBadge =
+      cleanBadge.toLowerCase().includes("rekomendasi") ||
+      cleanBadge.toLowerCase().includes("best") ||
+      cleanBadge.toLowerCase().includes("terlaris");
+
     const payload = {
       name: name.trim(),
       category: category.toLowerCase(),
@@ -341,28 +492,46 @@ export default function AdminMenuPage() {
       ingredients: cleanSpices,
       packagingInfo: packagingInfo.trim() || "Kemasan thermal pouch tahan panas",
       packaging: packagingInfo.trim() || "Kemasan thermal pouch tahan panas",
-      popular,
-      isRecommended: popular,
-      isFavorite: popular,
-      available: true,
+      badge: cleanBadge || null,
+      badgeColor: cleanBadge ? badgeColor : null,
+      popular: isRecBadge,
+      isRecommended: isRecBadge,
+      isFavorite: isRecBadge,
+      available: !isSoldOut,
     };
 
     try {
       if (editingMenu) {
+        saveMenuBadgeMapEntry(
+          editingMenu.id,
+          cleanBadge ? { badge: cleanBadge, badgeColor } : null
+        );
+
         const res = await fetch(`/api/menu/${editingMenu.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
 
+        let serverRecord: Partial<MenuItem> = {};
         if (res.ok) {
-          const updated = (await res.json()) as MenuItem;
-          setMenus((prev) =>
-            prev.map((m) =>
-              m.id === editingMenu.id ? { ...m, ...payload, ...updated } : m
-            )
-          );
+          serverRecord = (await res.json()) as Partial<MenuItem>;
         }
+
+        setMenus((prev) =>
+          prev.map((m) =>
+            m.id === editingMenu.id
+              ? {
+                  ...m,
+                  ...payload,
+                  ...serverRecord,
+                  badge: cleanBadge || null,
+                  badgeColor: cleanBadge ? badgeColor : null,
+                  available: !isSoldOut,
+                }
+              : m
+          )
+        );
       } else {
         const res = await fetch("/api/menu", {
           method: "POST",
@@ -370,10 +539,28 @@ export default function AdminMenuPage() {
           body: JSON.stringify(payload),
         });
 
+        let created: MenuItem = {
+          ...payload,
+          id: Date.now(),
+        };
+
         if (res.ok) {
-          const created = (await res.json()) as MenuItem;
-          setMenus((prev) => [created, ...prev]);
+          const serverCreated = (await res.json()) as MenuItem;
+          created = {
+            ...serverCreated,
+            ...payload,
+            id: serverCreated.id ?? created.id,
+            badge: cleanBadge || null,
+            badgeColor: cleanBadge ? badgeColor : null,
+            available: !isSoldOut,
+          };
         }
+
+        saveMenuBadgeMapEntry(
+          created.id,
+          cleanBadge ? { badge: cleanBadge, badgeColor } : null
+        );
+        setMenus((prev) => [created, ...prev]);
       }
 
       notifyCustomerSync();
@@ -385,9 +572,11 @@ export default function AdminMenuPage() {
     }
   }
 
+  // Menghapus item menu dari state, localStorage, dan server API
   async function handleDeleteMenu(id: number | string, menuName: string) {
     if (!confirm(`Hapus menu "${menuName}" dari daftar sajian?`)) return;
 
+    saveMenuBadgeMapEntry(id, null);
     setMenus((prev) => prev.filter((m) => m.id !== id));
 
     try {
@@ -398,8 +587,18 @@ export default function AdminMenuPage() {
     }
   }
 
+  // Menyusun daftar tab kategori dan menggabungkan pilihan badge
   const allTabs = useMemo(() => ["ALL", ...categoryList], [categoryList]);
 
+  const badgeChoices = useMemo(() => {
+    const merged = [...DEFAULT_BADGE_PRESETS, ...customBadgeList];
+    return merged.filter(
+      (item, idx, arr) =>
+        arr.findIndex((x) => x.toLowerCase() === item.toLowerCase()) === idx
+    );
+  }, [customBadgeList]);
+
+  // Menyaring daftar menu berdasarkan kategori
   const filteredMenus = useMemo(() => {
     return menus.filter((m) => {
       const matchCat =
@@ -413,10 +612,13 @@ export default function AdminMenuPage() {
     });
   }, [menus, selectedCategory, searchQuery]);
 
-  const recommendedCount = useMemo(
-    () => menus.filter((m) => checkIsRecommended(m)).length,
+  // Menghitung jumlah menu yang memiliki badge
+  const badgedMenuCount = useMemo(
+    () => menus.filter((m) => Boolean(String(m.badge ?? "").trim())).length,
     [menus]
   );
+
+  const previewColors = getBadgeStyleFromPalette(badge || "Badge", badgeColor);
 
   return (
     <div
@@ -428,6 +630,7 @@ export default function AdminMenuPage() {
         minHeight: "100vh",
       }}
     >
+      {/* Header halaman kelola menu */}
       <header
         style={{
           backgroundColor: "#FFFFFF",
@@ -458,7 +661,7 @@ export default function AdminMenuPage() {
               color: "#6D4C30",
             }}
           >
-            Atur katalog kuliner Banjar, rekomendasi terlaris, kategori menu, racikan rempah, dan kemasan.
+            Atur katalog kuliner Banjar, badge &amp; warna label, kategori menu, racikan rempah, dan kemasan.
           </p>
         </div>
 
@@ -514,7 +717,7 @@ export default function AdminMenuPage() {
           gap: "24px",
         }}
       >
-        {/* STATISTIK MENU */}
+        {/* statistik menu */}
         <div
           style={{
             display: "grid",
@@ -554,7 +757,7 @@ export default function AdminMenuPage() {
             }}
           >
             <div style={{ fontSize: "12px", fontWeight: 800, color: "#8A6B47" }}>
-              Menu Rekomendasi / Terlaris
+              Menu Ber-Badge Aktif
             </div>
             <div
               style={{
@@ -564,8 +767,8 @@ export default function AdminMenuPage() {
                 marginTop: "4px",
               }}
             >
-              {recommendedCount}{" "}
-              <span style={{ fontSize: "13px", fontWeight: 700 }}>Rekomendasi</span>
+              {badgedMenuCount}{" "}
+              <span style={{ fontSize: "13px", fontWeight: 700 }}>Menu</span>
             </div>
           </div>
 
@@ -594,7 +797,7 @@ export default function AdminMenuPage() {
           </div>
         </div>
 
-        {/* FILTER KATEGORI */}
+        {/* filter kategori dan pencarian nama menu */}
         <div
           style={{
             backgroundColor: "#FFFFFF",
@@ -679,7 +882,7 @@ export default function AdminMenuPage() {
           </div>
         </div>
 
-        {/* KARTU MENU */}
+        {/* Daftar kartu menu */}
         {loading ? (
           <div
             style={{
@@ -721,7 +924,14 @@ export default function AdminMenuPage() {
             }}
           >
             {filteredMenus.map((item) => {
-              const isRec = checkIsRecommended(item);
+              const activeBadge = String(item.badge ?? "").trim();
+              const badgeColors = getBadgeStyleFromPalette(
+                activeBadge,
+                item.badgeColor
+              );
+              const isSoldOut =
+                item.available === false || isSoldOutBadgeText(activeBadge);
+
               const calText = String(item.calories ?? "350 kkal").includes("kkal")
                 ? String(item.calories)
                 : `${item.calories ?? 350} kkal`;
@@ -742,7 +952,9 @@ export default function AdminMenuPage() {
                   style={{
                     backgroundColor: "#FFFFFF",
                     borderRadius: "20px",
-                    border: isRec ? "2px solid #F59E0B" : "1.5px solid #E5DEC9",
+                    border: activeBadge
+                      ? `2px solid ${badgeColors.background}`
+                      : "1.5px solid #E5DEC9",
                     overflow: "hidden",
                     display: "flex",
                     flexDirection: "column",
@@ -771,6 +983,7 @@ export default function AdminMenuPage() {
                           width: "100%",
                           height: "100%",
                           objectFit: "cover",
+                          filter: isSoldOut ? "grayscale(75%)" : "none",
                         }}
                       />
 
@@ -791,30 +1004,24 @@ export default function AdminMenuPage() {
                         {item.category || "Makanan"}
                       </span>
 
-                      <button
-                        type="button"
-                        onClick={() => void handleToggleRecommendCard(item)}
-                        style={{
-                          position: "absolute",
-                          top: "12px",
-                          right: "12px",
-                          backgroundColor: isRec
-                            ? "#FEF3C7"
-                            : "rgba(255, 255, 255, 0.9)",
-                          color: isRec ? "#92400E" : "#475569",
-                          border: isRec
-                            ? "1.5px solid #F59E0B"
-                            : "1px solid #CBD5E1",
-                          padding: "4px 10px",
-                          borderRadius: "20px",
-                          fontSize: "11px",
-                          fontWeight: 900,
-                          cursor: "pointer",
-                          boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
-                        }}
-                      >
-                        {isRec ? "Rekomendasi" : "Jadikan Rekomendasi"}
-                      </button>
+                      {activeBadge && (
+                        <span
+                          style={{
+                            position: "absolute",
+                            top: "12px",
+                            right: "12px",
+                            backgroundColor: badgeColors.background,
+                            color: badgeColors.color,
+                            padding: "4px 11px",
+                            borderRadius: "20px",
+                            fontSize: "11px",
+                            fontWeight: 900,
+                            boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+                          }}
+                        >
+                          {activeBadge}
+                        </span>
+                      )}
                     </div>
 
                     <div style={{ padding: "16px 18px 12px" }}>
@@ -991,7 +1198,7 @@ export default function AdminMenuPage() {
         )}
       </div>
 
-      {/* MODAL KELOLA KATEGORI */}
+      {/* Modal kelola kategori menu */}
       {isCatModalOpen && (
         <div
           style={{
@@ -1252,7 +1459,7 @@ export default function AdminMenuPage() {
         </div>
       )}
 
-      {/* MODAL TAMBAH / EDIT MENU */}
+      {/* form tambah atau edit menu beserta pengaturan badge custom dan warnanya */}
       {isModalOpen && (
         <div
           style={{
@@ -1519,6 +1726,220 @@ export default function AdminMenuPage() {
               </div>
             </div>
 
+            {/* Kontrol badge menu*/}
+            <div
+              style={{
+                backgroundColor: "#FAF6EE",
+                border: "1.5px solid #D6C7B2",
+                borderRadius: "14px",
+                padding: "14px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "10px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "8px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <label
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 800,
+                      color: "#2A1A11",
+                    }}
+                  >
+                    Badge Menu (badge)
+                  </label>
+                  {badge && (
+                    <span
+                      style={{
+                        backgroundColor: previewColors.background,
+                        color: previewColors.color,
+                        padding: "2px 9px",
+                        borderRadius: "12px",
+                        fontSize: "10.5px",
+                        fontWeight: 900,
+                      }}
+                    >
+                      {badge}
+                    </span>
+                  )}
+                </div>
+
+                {badge && (
+                  <button
+                    type="button"
+                    onClick={() => setBadge("")}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#DC2626",
+                      fontSize: "11px",
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                  >
+                    Hapus Badge
+                  </button>
+                )}
+              </div>
+
+              <input
+                type="text"
+                value={badge}
+                onChange={(e) => setBadge(e.target.value)}
+                placeholder="Nama badge yang dipakai menu (misal: Sold Out, Rekomendasi, Pedas, atau ketik sendiri)..."
+                style={{
+                  width: "100%",
+                  padding: "9px 12px",
+                  borderRadius: "9px",
+                  border: "1px solid #D6C7B2",
+                  backgroundColor: "#FFFFFF",
+                  fontSize: "12.5px",
+                }}
+              />
+
+              <div style={{ display: "flex", gap: "6px" }}>
+                <input
+                  type="text"
+                  value={newBadgeOptionInput}
+                  onChange={(e) => setNewBadgeOptionInput(e.target.value)}
+                  placeholder="Buat badge baru (misal: Hemat, Porsi Jumbo)..."
+                  style={{
+                    flex: 1,
+                    padding: "7px 10px",
+                    borderRadius: "8px",
+                    border: "1px dashed #8A6B47",
+                    backgroundColor: "#FFFFFF",
+                    fontSize: "12px",
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddCustomBadgeOption}
+                  style={{
+                    padding: "7px 12px",
+                    borderRadius: "8px",
+                    border: "none",
+                    backgroundColor: "#5C3A21",
+                    color: "#FFFFFF",
+                    fontSize: "11.5px",
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  + Tambah Badge
+                </button>
+              </div>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                {badgeChoices.map((preset) => {
+                  const active = badge.toLowerCase() === preset.toLowerCase();
+                  return (
+                    <button
+                      type="button"
+                      key={preset}
+                      onClick={() => {
+                        setBadge(preset);
+                        if (
+                          preset.toLowerCase() === "sold out" ||
+                          preset.toLowerCase().includes("pedas")
+                        ) {
+                          setBadgeColor("red");
+                        } else if (
+                          preset.toLowerCase().includes("rekomendasi") ||
+                          preset.toLowerCase().includes("best")
+                        ) {
+                          setBadgeColor("amber");
+                        }
+                      }}
+                      style={{
+                        padding: "5px 10px",
+                        borderRadius: "8px",
+                        fontSize: "11px",
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        border: active
+                          ? "1.5px solid #2A1A11"
+                          : "1px solid #D6C7B2",
+                        backgroundColor: active ? "#2A1A11" : "#FFFFFF",
+                        color: active ? "#EFE3C8" : "#2A1A11",
+                      }}
+                    >
+                      {preset}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div
+                style={{
+                  borderTop: "1px dashed #D6C7B2",
+                  paddingTop: "8px",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "11.5px",
+                    fontWeight: 800,
+                    color: "#432818",
+                    marginRight: "4px",
+                  }}
+                >
+                  Warna Badge:
+                </span>
+                {BADGE_COLOR_PALETTE.map((opt) => {
+                  const selected = badgeColor === opt.id;
+                  return (
+                    <button
+                      type="button"
+                      key={opt.id}
+                      onClick={() => setBadgeColor(opt.id)}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "5px",
+                        padding: "5px 9px",
+                        borderRadius: "8px",
+                        fontSize: "11px",
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        border: selected
+                          ? "2px solid #2A1A11"
+                          : "1px solid #D6C7B2",
+                        backgroundColor: "#FFFFFF",
+                        color: "#2A1A11",
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: "11px",
+                          height: "11px",
+                          borderRadius: "50%",
+                          backgroundColor: opt.bg,
+                          display: "inline-block",
+                        }}
+                      />
+                      <span>{opt.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <div
               style={{
                 backgroundColor: "#FFFDF7",
@@ -1641,26 +2062,6 @@ export default function AdminMenuPage() {
                 }}
               />
             </div>
-
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                fontSize: "13px",
-                fontWeight: 800,
-                color: "#2A1A11",
-                cursor: "pointer",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={popular}
-                onChange={(e) => setPopular(e.target.checked)}
-                style={{ width: "16px", height: "16px", accentColor: "#5C3A21" }}
-              />
-              <span>Tandai sebagai Menu Populer / Rekomendasi (popular)</span>
-            </label>
 
             <div
               style={{
