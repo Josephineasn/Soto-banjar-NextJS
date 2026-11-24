@@ -32,7 +32,6 @@ export interface BadgeMetaEntry {
 
 const DEFAULT_BADGE_PRESETS = ["Sold Out", "Best Seller", "Rekomendasi", "Pedas"];
 
-// Palet warna cepat yang bisa diklik langsung oleh admin
 const BADGE_COLOR_PALETTE = [
   { id: "amber", label: "Emas", bg: "#D97706", text: "#FFFFFF" },
   { id: "red", label: "Merah", bg: "#DC2626", text: "#FFFFFF" },
@@ -45,6 +44,8 @@ const BADGE_COLOR_PALETTE = [
 
 const MENU_BADGE_MAP_KEY = "soto_menu_badge_map";
 const CUSTOM_BADGE_LIST_KEY = "soto_custom_badge_presets";
+const SAVED_BADGE_COLORS_KEY = "soto_saved_badge_colors";
+const ADMIN_MENUS_CACHE_KEY = "soto_admin_menus_cache";
 
 function getContrastTextForHex(hexColor: string): string {
   const clean = hexColor.replace("#", "").trim();
@@ -58,11 +59,39 @@ function getContrastTextForHex(hexColor: string): string {
 
 function resolveHexColorValue(badgeColor?: string | null): string {
   const raw = String(badgeColor ?? "").trim();
-  if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw;
+  if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toUpperCase();
   const matched = BADGE_COLOR_PALETTE.find(
     (c) => c.id === raw.toLowerCase()
   );
   return matched ? matched.bg : "#D97706";
+}
+
+function writeAdminMenusCache(list: MenuItem[]) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(ADMIN_MENUS_CACHE_KEY, JSON.stringify(list));
+  } catch {}
+}
+
+function readSavedWheelColors(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(SAVED_BADGE_COLORS_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((c) => String(c).trim().toUpperCase())
+        .filter((c) => /^#[0-9A-F]{6}$/.test(c));
+    }
+  } catch {}
+  return [];
+}
+
+function writeSavedWheelColors(colors: string[]) {
+  try {
+    localStorage.setItem(SAVED_BADGE_COLORS_KEY, JSON.stringify(colors));
+  } catch {}
 }
 
 function readMenuBadgeMap(): Record<string, BadgeMetaEntry> {
@@ -117,7 +146,6 @@ function readAllBadgePresets(): string[] {
   return [...DEFAULT_BADGE_PRESETS];
 }
 
-// Menyimpan daftar pilihan badge terbaru ke localStorage
 function writeAllBadgePresets(list: string[]) {
   try {
     localStorage.setItem(CUSTOM_BADGE_LIST_KEY, JSON.stringify(list));
@@ -203,6 +231,37 @@ function formatSpicesText(raw: unknown): string {
   return str;
 }
 
+function compressUploadedImageToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Gagal membaca file gambar"));
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const img = new Image();
+      img.onerror = () => resolve(result);
+      img.onload = () => {
+        const maxWidth = 800;
+        const scale = img.width > maxWidth ? maxWidth / img.width : 1;
+        const targetW = Math.round(img.width * scale);
+        const targetH = Math.round(img.height * scale);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(result);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, targetW, targetH);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      };
+      img.src = result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function AdminMenuPage() {
   // State daftar menu, kategori, loading, dan filter pencarian
   const [menus, setMenus] = useState<MenuItem[]>([]);
@@ -224,28 +283,30 @@ export default function AdminMenuPage() {
   );
   const [editingCatNewName, setEditingCatNewName] = useState<string>("");
 
-  // State modal form tambah/edit menu beserta badge dan warnanya
+  // State modal form tambah/edit menu beserta badge, warna, dan unggah foto
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingMenu, setEditingMenu] = useState<MenuItem | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const [uploadingImage, setUploadingImage] = useState<boolean>(false);
 
   const [name, setName] = useState<string>("");
   const [category, setCategory] = useState<string>("makanan");
-  const [price, setPrice] = useState<string>("35000");
-  const [rating, setRating] = useState<string>("5");
+  const [price, setPrice] = useState<string>("");
+  const [rating, setRating] = useState<string>("");
   const [spicyLevel, setSpicyLevel] = useState<string>("Tidak Pedas");
-  const [calories, setCalories] = useState<string>("350");
+  const [calories, setCalories] = useState<string>("");
   const [image, setImage] = useState<string>("");
   const [description, setDescription] = useState<string>("");
   const [spices, setSpices] = useState<string>("");
-  const [packagingInfo, setPackagingInfo] = useState<string>(
-    "Kemasan thermal pouch tahan panas"
-  );
+  const [packagingInfo, setPackagingInfo] = useState<string>("");
   const [badge, setBadge] = useState<string>("");
   const [badgeColor, setBadgeColor] = useState<string>("#D97706");
   const [newBadgeOptionInput, setNewBadgeOptionInput] = useState<string>("");
   const [badgePresets, setBadgePresets] = useState<string[]>(() =>
     readAllBadgePresets()
+  );
+  const [savedWheelColors, setSavedWheelColors] = useState<string[]>(() =>
+    readSavedWheelColors()
   );
 
   // Menggabungkan data menu dari API dengan data badge custom di localStorage
@@ -288,7 +349,9 @@ export default function AdminMenuPage() {
         if (menuRes.ok && isMounted) {
           const menuData: unknown = await menuRes.json();
           if (Array.isArray(menuData)) {
-            setMenus(enrichMenusWithBadgeMap(menuData as MenuItem[]));
+            const enriched = enrichMenusWithBadgeMap(menuData as MenuItem[]);
+            setMenus(enriched);
+            writeAdminMenusCache(enriched);
           }
         }
 
@@ -321,6 +384,27 @@ export default function AdminMenuPage() {
     } catch {}
   }
 
+  // Memproses file foto yang diunggah admin
+  async function handleImageFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      alert("Harap pilih file gambar (JPG, PNG, atau WEBP).");
+      return;
+    }
+
+    setUploadingImage(true);
+    try {
+      const compressedDataUrl = await compressUploadedImageToDataUrl(file);
+      setImage(compressedDataUrl);
+    } catch {
+      alert("Gagal memproses file foto yang diunggah.");
+    } finally {
+      setUploadingImage(false);
+      e.target.value = "";
+    }
+  }
+
   // Menambahkan pilihan badge baru ke daftar pilihan badge
   function handleAddCustomBadgeOption() {
     const clean = newBadgeOptionInput.trim();
@@ -348,6 +432,27 @@ export default function AdminMenuPage() {
   function handleRestoreDefaultBadges() {
     writeAllBadgePresets([...DEFAULT_BADGE_PRESETS]);
     setBadgePresets([...DEFAULT_BADGE_PRESETS]);
+  }
+
+  // Menyimpan warna yang dipilih dari color wheel ke daftar warna tersimpan
+  function handleSaveCurrentWheelColor() {
+    const hex = resolveHexColorValue(badgeColor);
+    const alreadyInPalette = BADGE_COLOR_PALETTE.some(
+      (p) => p.bg.toUpperCase() === hex
+    );
+    const alreadySaved = savedWheelColors.some((c) => c === hex);
+    if (alreadyInPalette || alreadySaved) return;
+
+    const next = [...savedWheelColors, hex];
+    writeSavedWheelColors(next);
+    setSavedWheelColors(next);
+  }
+
+  // Menghapus warna tersimpan dari daftar warna custom
+  function handleDeleteSavedWheelColor(targetHex: string) {
+    const next = savedWheelColors.filter((c) => c !== targetHex);
+    writeSavedWheelColors(next);
+    setSavedWheelColors(next);
   }
 
   // Mengirim request POST untuk menambah kategori baru ke database
@@ -392,13 +497,15 @@ export default function AdminMenuPage() {
       if (res.ok) {
         const updatedCats = (await res.json()) as string[];
         setCategoryList(updatedCats);
-        setMenus((prev) =>
-          prev.map((m) =>
+        setMenus((prev) => {
+          const next = prev.map((m) =>
             (m.category || "").toLowerCase() === oldName
               ? { ...m, category: cleanNew }
               : m
-          )
-        );
+          );
+          writeAdminMenusCache(next);
+          return next;
+        });
         if (selectedCategory === oldName) {
           setSelectedCategory(cleanNew);
         }
@@ -430,13 +537,15 @@ export default function AdminMenuPage() {
       if (res.ok) {
         const updatedCats = (await res.json()) as string[];
         setCategoryList(updatedCats);
-        setMenus((prev) =>
-          prev.map((m) =>
+        setMenus((prev) => {
+          const next = prev.map((m) =>
             (m.category || "").toLowerCase() === catName
               ? { ...m, category: "makanan" }
               : m
-          )
-        );
+          );
+          writeAdminMenusCache(next);
+          return next;
+        });
         if (selectedCategory === catName) {
           setSelectedCategory("ALL");
         }
@@ -447,37 +556,37 @@ export default function AdminMenuPage() {
     }
   }
 
-  // Menyiapkan nilai awal form lalu membuka tambah menu baru
   function openAddModal() {
     setEditingMenu(null);
     setName("");
     setCategory(
-      selectedCategory !== "ALL" ? selectedCategory.toLowerCase() : "makanan"
+      selectedCategory !== "ALL"
+        ? selectedCategory.toLowerCase()
+        : categoryList[0] || "makanan"
     );
-    setPrice("35000");
-    setRating("5");
+    setPrice("");
+    setRating("");
     setSpicyLevel("Tidak Pedas");
-    setCalories("350");
-    setImage("/images/sotobanjarotentik.jpg");
+    setCalories("");
+    setImage("");
     setDescription("");
-    setSpices("Kayu manis, kapulaga, cengkih, pala");
-    setPackagingInfo("Kemasan thermal pouch tahan panas");
+    setSpices("");
+    setPackagingInfo("");
     setBadge("");
     setBadgeColor("#D97706");
     setNewBadgeOptionInput("");
     setIsModalOpen(true);
   }
 
-  // Mengisi form dengan data item menu yang dipilih untuk diedit
   function openEditModal(item: MenuItem) {
     setEditingMenu(item);
     setName(item.name || "");
     setCategory((item.category || "makanan").toLowerCase());
-    setPrice(String(item.price ?? 0));
-    setRating(String(item.rating ?? "5"));
+    setPrice(String(item.price ?? ""));
+    setRating(String(item.rating ?? ""));
     setSpicyLevel(item.spicyLevel || item.spiceLevel || "Tidak Pedas");
     setCalories(
-      String(item.calories ?? "350")
+      String(item.calories ?? "")
         .replace(/kkal/gi, "")
         .trim()
     );
@@ -487,10 +596,7 @@ export default function AdminMenuPage() {
     const rawSpices = item.spices ?? item.ingredients ?? "";
     setSpices(formatSpicesText(rawSpices));
 
-    const rawPack =
-      item.packagingInfo ??
-      item.packaging ??
-      "Kemasan thermal pouch tahan panas";
+    const rawPack = item.packagingInfo ?? item.packaging ?? "";
     setPackagingInfo(String(rawPack));
 
     const currentBadge = String(item.badge ?? "").trim();
@@ -541,7 +647,7 @@ export default function AdminMenuPage() {
       spicyLevel: spicyLevel.trim() || "Tidak Pedas",
       spiceLevel: spicyLevel.trim() || "Tidak Pedas",
       calories: formattedCalories,
-      image: image.trim() || "/images/sotobanjarotentik.jpg",
+      image: image.trim() || "/images/sotobanjarotentik.jpeg",
       description: description.trim(),
       spices: cleanSpices,
       ingredients: cleanSpices,
@@ -573,8 +679,8 @@ export default function AdminMenuPage() {
           serverRecord = (await res.json()) as Partial<MenuItem>;
         }
 
-        setMenus((prev) =>
-          prev.map((m) =>
+        setMenus((prev) => {
+          const next = prev.map((m) =>
             m.id === editingMenu.id
               ? {
                   ...m,
@@ -585,8 +691,10 @@ export default function AdminMenuPage() {
                   available: !isSoldOut,
                 }
               : m
-          )
-        );
+          );
+          writeAdminMenusCache(next);
+          return next;
+        });
       } else {
         const res = await fetch("/api/menu", {
           method: "POST",
@@ -615,7 +723,11 @@ export default function AdminMenuPage() {
           created.id,
           cleanBadge ? { badge: cleanBadge, badgeColor: normalizedHexColor } : null
         );
-        setMenus((prev) => [created, ...prev]);
+        setMenus((prev) => {
+          const next = [created, ...prev];
+          writeAdminMenusCache(next);
+          return next;
+        });
       }
 
       notifyCustomerSync();
@@ -627,12 +739,16 @@ export default function AdminMenuPage() {
     }
   }
 
-  // Menghapus item menu dari state, localStorage, dan server API
+  // Menghapus item menu dari state, cache Customer, localStorage, dan server API
   async function handleDeleteMenu(id: number | string, menuName: string) {
     if (!confirm(`Hapus menu "${menuName}" dari daftar sajian?`)) return;
 
     saveMenuBadgeMapEntry(id, null);
-    setMenus((prev) => prev.filter((m) => m.id !== id));
+    setMenus((prev) => {
+      const next = prev.filter((m) => m.id !== id);
+      writeAdminMenusCache(next);
+      return next;
+    });
 
     try {
       await fetch(`/api/menu/${id}`, { method: "DELETE" });
@@ -667,6 +783,9 @@ export default function AdminMenuPage() {
 
   const activeHexColor = resolveHexColorValue(badgeColor);
   const previewColors = getBadgeStyleFromPalette(badge || "Badge", activeHexColor);
+  const isCurrentColorAlreadySaved =
+    BADGE_COLOR_PALETTE.some((p) => p.bg.toUpperCase() === activeHexColor) ||
+    savedWheelColors.includes(activeHexColor);
 
   return (
     <div
@@ -1021,11 +1140,11 @@ export default function AdminMenuPage() {
                       }}
                     >
                       <img
-                        src={item.image || "/images/sotobanjarotentik.jpg"}
+                        src={item.image || "/images/sotobanjarotentik.jpeg"}
                         alt={item.name}
                         onError={(e) => {
                           (e.currentTarget as HTMLImageElement).src =
-                            "/images/sotobanjarotentik.jpg";
+                            "/images/sotobanjarotentik.jpeg";
                         }}
                         style={{
                           width: "100%",
@@ -1507,7 +1626,7 @@ export default function AdminMenuPage() {
         </div>
       )}
 
-      {/* Form tambah atau edit menu beserta pengaturan badge custom dan roda warna */}
+      {/* Form tambah atau edit menu (tambah menu baru dimulai dengan seluruh input kosong) */}
       {isModalOpen && (
         <div
           style={{
@@ -1601,6 +1720,7 @@ export default function AdminMenuPage() {
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  placeholder="Contoh: Soto Banjar Spesial"
                   required
                   style={{
                     width: "100%",
@@ -1671,6 +1791,7 @@ export default function AdminMenuPage() {
                   type="number"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
+                  placeholder="Contoh: 35000"
                   required
                   style={{
                     width: "100%",
@@ -1702,6 +1823,7 @@ export default function AdminMenuPage() {
                   max="5"
                   value={rating}
                   onChange={(e) => setRating(e.target.value)}
+                  placeholder="Contoh: 4.8"
                   style={{
                     width: "100%",
                     padding: "10px 12px",
@@ -1729,6 +1851,7 @@ export default function AdminMenuPage() {
                   type="number"
                   value={calories}
                   onChange={(e) => setCalories(e.target.value)}
+                  placeholder="Contoh: 350"
                   style={{
                     width: "100%",
                     padding: "10px 12px",
@@ -1774,7 +1897,7 @@ export default function AdminMenuPage() {
               </div>
             </div>
 
-            {/* Kontrol badge menu */}
+            {/* Kontrol badge menu: tambah, hapus badge, dan simpan/hapus warna dari roda warna */}
             <div
               style={{
                 backgroundColor: "#FAF6EE",
@@ -1837,7 +1960,7 @@ export default function AdminMenuPage() {
                         padding: 0,
                       }}
                     >
-                      Reset
+                      Reset 4 Badge Awal
                     </button>
                   )}
 
@@ -1855,7 +1978,7 @@ export default function AdminMenuPage() {
                         padding: 0,
                       }}
                     >
-                      Hapus Badge
+                      Lepas Badge Menu
                     </button>
                   )}
                 </div>
@@ -1916,7 +2039,7 @@ export default function AdminMenuPage() {
                 </button>
               </div>
 
-              {/* Daftar pilihan badge dengan tombol hapus (x) pada setiap badge */}
+              {/* Daftar pilihan badge dengan tombol hapus (×) pada setiap badge */}
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
                 {badgePresets.map((preset) => {
                   const active = badge.toLowerCase() === preset.toLowerCase();
@@ -1986,7 +2109,7 @@ export default function AdminMenuPage() {
                 })}
               </div>
 
-              {/* Pemilih warna bebas (Color Wheel Picker) */}
+              {/* Pemilih warna bebas (Color Wheel Picker) + tombol Simpan Warna + daftar warna tersimpan */}
               <div
                 style={{
                   borderTop: "1px dashed #D6C7B2",
@@ -2015,7 +2138,7 @@ export default function AdminMenuPage() {
                     Warna Badge (Pilih Bebas):
                   </span>
 
-                  {/* Tombol Roda Warna Pelangi + Kode Hex */}
+                  {/* Roda Warna Pelangi + Kode Hex + Tombol Simpan Warna */}
                   <div
                     style={{
                       display: "inline-flex",
@@ -2024,7 +2147,7 @@ export default function AdminMenuPage() {
                       backgroundColor: "#FFFFFF",
                       border: "1.5px solid #D6C7B2",
                       borderRadius: "999px",
-                      padding: "4px 12px 4px 5px",
+                      padding: "4px 6px 4px 5px",
                     }}
                   >
                     <label
@@ -2075,7 +2198,7 @@ export default function AdminMenuPage() {
 
                     <input
                       type="text"
-                      value={activeHexColor.toUpperCase()}
+                      value={activeHexColor}
                       onChange={(e) => {
                         const val = e.target.value.trim();
                         if (/^#?[0-9a-fA-F]{0,6}$/.test(val)) {
@@ -2095,9 +2218,132 @@ export default function AdminMenuPage() {
                         fontFamily: "monospace",
                       }}
                     />
+
+                    <button
+                      type="button"
+                      disabled={isCurrentColorAlreadySaved}
+                      onClick={handleSaveCurrentWheelColor}
+                      title={
+                        isCurrentColorAlreadySaved
+                          ? "Warna sudah ada di daftar"
+                          : "Simpan warna ini ke daftar pilihan"
+                      }
+                      style={{
+                        padding: "5px 10px",
+                        borderRadius: "999px",
+                        border: "none",
+                        backgroundColor: isCurrentColorAlreadySaved
+                          ? "#E5DEC9"
+                          : "#5C3A21",
+                        color: isCurrentColorAlreadySaved
+                          ? "#8A6B47"
+                          : "#FFFFFF",
+                        fontSize: "11px",
+                        fontWeight: 800,
+                        cursor: isCurrentColorAlreadySaved
+                          ? "default"
+                          : "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {isCurrentColorAlreadySaved
+                        ? "Tersimpan"
+                        : "+ Simpan Warna"}
+                    </button>
                   </div>
                 </div>
 
+                {/* Daftar warna custom tersimpan dari wheel (bisa dipilih ulang & dihapus dengan ×) */}
+                {savedWheelColors.length > 0 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 800,
+                        color: "#6D4C30",
+                        marginRight: "2px",
+                      }}
+                    >
+                      Warna Tersimpan:
+                    </span>
+                    {savedWheelColors.map((hex) => {
+                      const selected = activeHexColor === hex;
+                      return (
+                        <div
+                          key={hex}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            borderRadius: "8px",
+                            border: selected
+                              ? "2px solid #2A1A11"
+                              : "1px solid #D6C7B2",
+                            backgroundColor: "#FFFFFF",
+                            overflow: "hidden",
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setBadgeColor(hex)}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "5px",
+                              padding: "4px 6px 4px 8px",
+                              border: "none",
+                              background: "transparent",
+                              color: "#2A1A11",
+                              fontSize: "11px",
+                              fontWeight: 800,
+                              fontFamily: "monospace",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <span
+                              style={{
+                                width: "11px",
+                                height: "11px",
+                                borderRadius: "50%",
+                                backgroundColor: hex,
+                                border: "1px solid rgba(0,0,0,0.18)",
+                                display: "inline-block",
+                              }}
+                            />
+                            <span>{hex}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSavedWheelColor(hex)}
+                            title={`Hapus warna tersimpan ${hex}`}
+                            aria-label={`Hapus warna ${hex}`}
+                            style={{
+                              padding: "4px 7px 4px 3px",
+                              border: "none",
+                              background: "transparent",
+                              color: "#DC2626",
+                              fontSize: "12px",
+                              fontWeight: 900,
+                              cursor: "pointer",
+                              lineHeight: 1,
+                            }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Pilihan warna cepat bawaan */}
                 <div
                   style={{
                     display: "flex",
@@ -2174,7 +2420,7 @@ export default function AdminMenuPage() {
                   type="text"
                   value={spices}
                   onChange={(e) => setSpices(e.target.value)}
-                  placeholder="Kayu manis, kapulaga, cengkih, pala"
+                  placeholder="Contoh: Kayu manis, kapulaga, cengkih, pala"
                   style={{
                     width: "100%",
                     padding: "9px 12px",
@@ -2202,7 +2448,7 @@ export default function AdminMenuPage() {
                   type="text"
                   value={packagingInfo}
                   onChange={(e) => setPackagingInfo(e.target.value)}
-                  placeholder="Kemasan thermal pouch tahan panas"
+                  placeholder="Contoh: Kemasan thermal pouch tahan panas"
                   style={{
                     width: "100%",
                     padding: "9px 12px",
@@ -2215,32 +2461,140 @@ export default function AdminMenuPage() {
               </div>
             </div>
 
-            <div>
-              <label
+            {/* Kontrol foto menu: bisa upload file dari komputer/HP atau tempel link / path gambar */}
+            <div
+              style={{
+                backgroundColor: "#FAF6EE",
+                border: "1.5px solid #D6C7B2",
+                borderRadius: "14px",
+                padding: "14px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "10px",
+              }}
+            >
+              <div
                 style={{
-                  display: "block",
-                  fontSize: "12px",
-                  fontWeight: 800,
-                  color: "#2A1A11",
-                  marginBottom: "5px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "8px",
                 }}
               >
-                Path Gambar Lokal (/images/...)
-              </label>
+                <label
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: 800,
+                    color: "#2A1A11",
+                  }}
+                >
+                  Foto Sajian (Upload File atau Link / Path Gambar)
+                </label>
+
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <label
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "6px 12px",
+                      borderRadius: "9px",
+                      backgroundColor: "#5C3A21",
+                      color: "#FFFFFF",
+                      fontSize: "11.5px",
+                      fontWeight: 800,
+                      cursor: uploadingImage ? "wait" : "pointer",
+                    }}
+                  >
+                    <span>
+                      {uploadingImage ? "Memproses Foto..." : "Upload Foto"}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={uploadingImage}
+                      onChange={(e) => void handleImageFileUpload(e)}
+                      style={{ display: "none" }}
+                    />
+                  </label>
+
+                  {image && (
+                    <button
+                      type="button"
+                      onClick={() => setImage("")}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: "9px",
+                        border: "1px solid #FCA5A5",
+                        backgroundColor: "#FEE2E2",
+                        color: "#DC2626",
+                        fontSize: "11px",
+                        fontWeight: 800,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Hapus Foto
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <input
                 type="text"
-                value={image}
+                value={image.startsWith("data:image/") ? "" : image}
                 onChange={(e) => setImage(e.target.value)}
-                placeholder="/images/sotobanjarotentik.jpg"
+                placeholder={
+                  image.startsWith("data:image/")
+                    ? "Foto berhasil diunggah dari perangkat (klik Hapus Foto untuk ganti ke link)"
+                    : "Atau tempel link gambar (https://...) / path lokal (/images/menu.jpg)"
+                }
                 style={{
                   width: "100%",
-                  padding: "10px 12px",
+                  padding: "9px 12px",
                   borderRadius: "10px",
-                  border: "1.5px solid #D6C7B2",
-                  backgroundColor: "#FAF6EE",
-                  fontSize: "13px",
+                  border: "1px solid #D6C7B2",
+                  backgroundColor: "#FFFFFF",
+                  fontSize: "12.5px",
                 }}
               />
+
+              {image && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    backgroundColor: "#FFFFFF",
+                    padding: "8px 10px",
+                    borderRadius: "10px",
+                    border: "1px solid #E5DEC9",
+                  }}
+                >
+                  <img
+                    src={image}
+                    alt="Pratinjau foto menu"
+                    style={{
+                      width: "56px",
+                      height: "56px",
+                      borderRadius: "8px",
+                      objectFit: "cover",
+                      border: "1px solid #D6C7B2",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div style={{ fontSize: "11.5px", color: "#6D4C30" }}>
+                    <strong style={{ color: "#2A1A11", display: "block" }}>
+                      Pratinjau Foto Menu
+                    </strong>
+                    <span>
+                      {image.startsWith("data:image/")
+                        ? "Sumber: File unggahan perangkat"
+                        : image}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
@@ -2259,6 +2613,7 @@ export default function AdminMenuPage() {
                 rows={3}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
+                placeholder="Tulis deskripsi singkat mengenai cita rasa atau isi porsi menu..."
                 style={{
                   width: "100%",
                   padding: "10px 12px",
@@ -2297,7 +2652,7 @@ export default function AdminMenuPage() {
               </button>
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || uploadingImage}
                 style={{
                   flex: 1,
                   padding: "12px",

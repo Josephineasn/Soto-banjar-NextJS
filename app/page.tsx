@@ -130,7 +130,7 @@ export default function Home() {
     setCart([]);
   }
 
-  // Memuat katalog menu, daftar kategori, dan konten dinamis dari server serta menyinkronkan update admin
+  // Memuat katalog menu, daftar kategori, dan konten dinamis serta menyinkronkan update admin
   useEffect(() => {
     let isMounted = true;
 
@@ -171,11 +171,51 @@ export default function Home() {
           fetch("/api/categories", { cache: "no-store" }).catch(() => null),
         ]);
 
-        if (!menuRes.ok) throw new Error();
-        const data: MenuItem[] = await menuRes.json();
+        let serverMenus: MenuItem[] = [];
+        if (menuRes.ok) {
+          const raw: unknown = await menuRes.json();
+          if (Array.isArray(raw)) {
+            serverMenus = raw as MenuItem[];
+          }
+        }
+
+        let cachedMenus: MenuItem[] = [];
+        let badgeMap: Record<string, { badge?: string; badgeColor?: string }> =
+          {};
+        try {
+          const rawCache = localStorage.getItem("soto_admin_menus_cache");
+          if (rawCache) {
+            const parsed: unknown = JSON.parse(rawCache);
+            if (Array.isArray(parsed)) {
+              cachedMenus = parsed as MenuItem[];
+            }
+          }
+          const rawBadges = localStorage.getItem("soto_menu_badge_map");
+          if (rawBadges) {
+            badgeMap = JSON.parse(rawBadges) as Record<
+              string,
+              { badge?: string; badgeColor?: string }
+            >;
+          }
+        } catch {}
+
+        const baseList = cachedMenus.length > 0 ? cachedMenus : serverMenus;
+        const mergedMenus = baseList.map((rawItem) => {
+          const item = rawItem as MenuItem & {
+            badge?: string | null;
+            badgeColor?: string | null;
+          };
+          const savedBadge = badgeMap[String(item.id)];
+          if (!savedBadge) return item;
+          return {
+            ...item,
+            badge: savedBadge.badge ?? item.badge,
+            badgeColor: savedBadge.badgeColor ?? item.badgeColor,
+          };
+        });
 
         if (isMounted) {
-          setMenus(data);
+          setMenus(mergedMenus);
         }
 
         if (catRes && catRes.ok && isMounted) {
@@ -207,7 +247,11 @@ export default function Home() {
     };
 
     const handleStorageSync = (e: StorageEvent) => {
-      if (e.key === "soto_menu_sync_ts") {
+      if (
+        e.key === "soto_menu_sync_ts" ||
+        e.key === "soto_admin_menus_cache" ||
+        e.key === "soto_menu_badge_map"
+      ) {
         void initFetch();
       }
       if (e.key === "soto_site_content") {
@@ -252,7 +296,7 @@ export default function Home() {
     ];
   }, [serverCategories]);
 
-  // Mengecek apakah sedang ada filter
+  // Mengecek apakah sedang ada filter atau kata kunci pencarian yang aktif
   const hasActiveFilter =
     category.toLowerCase() !== "semua" ||
     priceSort !== "default" ||
@@ -496,7 +540,7 @@ export default function Home() {
         })}
       </div>
 
-      {/* filter urutan harga, level pedas, dan tombol Reset Filter */}
+      {/* Bar filter urutan harga, level pedas, dan tombol Reset Filter */}
       <div
         style={{
           backgroundColor: "#EFE3C8",
