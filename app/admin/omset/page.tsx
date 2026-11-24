@@ -64,6 +64,13 @@ const MONTH_OPTIONS = [
 
 const DAY_OPTIONS = Array.from({ length: 31 }, (_, i) => String(i + 1));
 
+function normalizeMenuDisplayName(rawName: string): string {
+  return rawName
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/Sate\s+AYam/gi, "Sate Ayam");
+}
+
 function normalizeOrderKey(ord: OrderRecord): string {
   const raw = String(ord.orderNumber || ord.orderCode || ord.id || "");
   return raw.replace(/^#/, "").trim().toUpperCase();
@@ -118,10 +125,12 @@ function formatItemsSummaryForCsv(ord: OrderRecord): string {
     return "Paket Soto Banjar";
   }
   return ord.items
-    .map(
-      (it) =>
-        `${it.qty || it.quantity || 1}x ${it.name || it.title || "Menu"}`
-    )
+    .map((it) => {
+      const cleanName = normalizeMenuDisplayName(
+        String(it.name || it.title || "Menu")
+      );
+      return `${it.qty || it.quantity || 1}x ${cleanName}`;
+    })
     .join("; ");
 }
 
@@ -218,6 +227,7 @@ export default function AdminOmsetPage() {
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
 
+  // Memuat dan menggabungkan data pesanan dari API database
   useEffect(() => {
     let isCancelled = false;
 
@@ -309,7 +319,7 @@ export default function AdminOmsetPage() {
     [orders]
   );
 
-  // Mengumpulkan daftar tahun unik dari transaksi yang tersedia untuk dropdown filter tahun
+  // Mengumpulkan daftar tahun dari transaksi yang tersedia untuk dropdown filter tahun
   const availableYears = useMemo(() => {
     const yearSet = new Set<string>();
     yearSet.add(String(new Date().getFullYear()));
@@ -424,18 +434,20 @@ export default function AdminOmsetPage() {
     };
   }, [dateFilteredOrders]);
 
-  // Menghitung peringkat 5 menu terlaris berdasarkan total porsi terjual
+  // Menghitung peringkat 5 menu terlaris berdasarkan total porsi terjual pada periode aktif
   const topSellingMenus = useMemo<TopMenuStat[]>(() => {
     const map = new Map<string, TopMenuStat>();
 
     for (const ord of dateFilteredOrders) {
       if (!Array.isArray(ord.items)) continue;
       for (const it of ord.items) {
-        const rawName = String(it.name || it.title || "").trim();
-        if (!rawName) continue;
+        const cleanName = normalizeMenuDisplayName(
+          String(it.name || it.title || "")
+        );
+        if (!cleanName) continue;
         const qty = Number(it.qty ?? it.quantity ?? 1);
         const unitPrice = Number(it.price ?? 0);
-        const key = rawName.toLowerCase();
+        const key = cleanName.toLowerCase();
 
         const existing = map.get(key);
         if (existing) {
@@ -443,7 +455,7 @@ export default function AdminOmsetPage() {
           existing.totalRevenue += qty * unitPrice;
         } else {
           map.set(key, {
-            name: rawName,
+            name: cleanName,
             totalQty: qty,
             totalRevenue: qty * unitPrice,
           });
@@ -508,7 +520,7 @@ export default function AdminOmsetPage() {
         minHeight: "100vh",
       }}
     >
-      {/* Header halaman omset beserta tombol Export CSV dan Cetak Laporan */}
+      {/* Header */}
       <header
         style={{
           backgroundColor: "#FFFFFF",
@@ -791,7 +803,7 @@ export default function AdminOmsetPage() {
           </div>
         </div>
 
-        {/* Kartu ringkasan angka omset */}
+        {/* Ringkasan angka omset */}
         <div
           style={{
             display: "grid",
@@ -941,7 +953,7 @@ export default function AdminOmsetPage() {
           </div>
         </div>
 
-        {/* statistik 5 menu terlaris berdasarkan total porsi terjual */}
+        {/* Kartu statistik 5 menu terlaris berdasarkan total porsi terjual */}
         <div
           style={{
             backgroundColor: "#FFFFFF",
@@ -1080,7 +1092,7 @@ export default function AdminOmsetPage() {
           )}
         </div>
 
-        {/* Tabel rincian pendapatan per transaksi */}
+        {/* Rincian pendapatan per transaksi */}
         <div
           style={{
             backgroundColor: "#FFFFFF",
@@ -1264,7 +1276,9 @@ export default function AdminOmsetPage() {
                                 style={{ fontSize: "12px", fontWeight: 700 }}
                               >
                                 {it.qty || it.quantity || 1}x{" "}
-                                {it.name || it.title || "Menu"}
+                                {normalizeMenuDisplayName(
+                                  String(it.name || it.title || "Menu")
+                                )}
                               </div>
                             ))
                           ) : (
