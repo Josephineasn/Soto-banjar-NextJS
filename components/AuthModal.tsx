@@ -351,7 +351,7 @@ export function AuthModal({
               }}
             >
               {mode === "login"
-                ? "Username atau Email"
+                ? "Email"
                 : "Alamat Email"}
             </label>
             <input

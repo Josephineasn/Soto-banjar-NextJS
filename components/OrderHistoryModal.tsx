@@ -69,6 +69,7 @@ type OrderStatusTab = "SEMUA" | "PENDING" | "DIPROSES" | "DIKIRIM" | "SELESAI";
 
 const CUSTOMER_CONFIRMED_STORAGE_KEY = "soto_customer_confirmed_orders";
 
+// Membaca daftar ID pesanan yang sudah dikonfirmasi diterima oleh customer
 function readCustomerConfirmedOrders(): Set<string> {
   if (typeof window === "undefined") return new Set<string>();
   try {
@@ -82,6 +83,7 @@ function readCustomerConfirmedOrders(): Set<string> {
   return new Set<string>();
 }
 
+// Menyimpan ID pesanan yang telah dikonfirmasi diterima oleh customer ke localStorage
 function saveCustomerConfirmedOrder(orderKey: string) {
   if (typeof window === "undefined") return;
   try {
@@ -94,6 +96,7 @@ function saveCustomerConfirmedOrder(orderKey: string) {
   } catch {}
 }
 
+// Memformat tanggal dan waktu pesanan menjadi format Indonesia yang mudah dibaca
 function formatOrderDate(raw?: string): string {
   if (!raw) return "Baru saja";
   const d = new Date(raw);
@@ -117,8 +120,16 @@ function normalizeId(ord: OrderRecord): string {
   return raw.replace(/^#/, "").trim().toUpperCase();
 }
 
-// Menyusun teks faktur / nota terstruktur untuk diunduh atau dicetak oleh customer
-function formatReceiptText(ord: OrderRecord, fallbackName: string): string {
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+// Membuka tampilan faktur / nota resmi siap simpan sebagai PDF pada jendela cetak browser
+function downloadOrPrintInvoicePdf(ord: OrderRecord, fallbackName: string) {
   const rawCode = String(
     ord.orderCode || ord.orderNumber || ord.id || "SBN-ORDER"
   );
@@ -134,19 +145,6 @@ function formatReceiptText(ord: OrderRecord, fallbackName: string): string {
   const vaNum = ord.vaNumber || ord.virtualAccount || "-";
   const address = ord.address || ord.fullAddress || "-";
 
-  const itemLines =
-    Array.isArray(ord.items) && ord.items.length > 0
-      ? ord.items.map((it) => {
-          const itemName = it.name || it.menuName || it.menu?.name || "Menu";
-          const qty = Number(it.qty ?? it.quantity ?? 1);
-          const unitPrice = Number(it.price ?? it.menu?.price ?? 0);
-          const lineTotal = unitPrice * qty;
-          return `- ${qty}x ${itemName} (@Rp ${unitPrice.toLocaleString(
-            "id-ID"
-          )}) = Rp ${lineTotal.toLocaleString("id-ID")}`;
-        })
-      : ["- Rincian menu sesuai pesanan"];
-
   const shippingCost = Number(
     ord.shippingFee ?? ord.shippingCost ?? ord.deliveryFee ?? 0
   );
@@ -155,61 +153,32 @@ function formatReceiptText(ord: OrderRecord, fallbackName: string): string {
     ord.totalPrice ?? ord.totalAmount ?? ord.total ?? 0
   );
 
-  return [
-    "==========================================",
-    "       SOTO BANJAR SELERA NUSANTARA",
-    "          FAKTUR / NOTA PESANAN",
-    "==========================================",
-    `No. Faktur   : ${codeText}`,
-    `Tanggal      : ${dateText}`,
-    `Status       : ${statusText}`,
-    `Penerima     : ${recipient}`,
-    `Wilayah      : ${area} (${service})`,
-    `Alamat       : ${address}`,
-    `Pembayaran   : ${payment}`,
-    `No. VA       : ${vaNum}`,
-    "------------------------------------------",
-    "RINCIAN ITEM:",
-    ...itemLines,
-    "------------------------------------------",
-    `Ongkos Kirim : Rp ${shippingCost.toLocaleString("id-ID")}`,
-    ...(discount > 0
-      ? [`Diskon       : -Rp ${discount.toLocaleString("id-ID")}`]
-      : []),
-    `TOTAL BAYAR  : Rp ${totalCost.toLocaleString("id-ID")}`,
-    "==========================================",
-    "     Terima kasih telah berbelanja di",
-    "       Soto Banjar Selera Nusantara",
-    "==========================================",
-  ].join("\n");
-}
+  const itemRowsHtml =
+    Array.isArray(ord.items) && ord.items.length > 0
+      ? ord.items
+          .map((it) => {
+            const itemName = escapeHtml(
+              it.name || it.menuName || it.menu?.name || "Menu"
+            );
+            const qty = Number(it.qty ?? it.quantity ?? 1);
+            const unitPrice = Number(it.price ?? it.menu?.price ?? 0);
+            const lineTotal = unitPrice * qty;
+            return `
+              <tr>
+                <td style="padding:8px 0;border-bottom:1px solid #EFE3C8;">
+                  <strong>${itemName}</strong><br/>
+                  <span style="font-size:11px;color:#6D4C30;">${qty} x Rp ${unitPrice.toLocaleString("id-ID")}</span>
+                </td>
+                <td style="padding:8px 0;border-bottom:1px solid #EFE3C8;text-align:right;font-weight:700;">
+                  Rp ${lineTotal.toLocaleString("id-ID")}
+                </td>
+              </tr>
+            `;
+          })
+          .join("")
+      : `<tr><td colspan="2" style="padding:8px 0;">Rincian menu sesuai pesanan</td></tr>`;
 
-// Mengunduh faktur pesanan customer ke perangkat sebagai file teks (.txt)
-function downloadInvoiceTxt(ord: OrderRecord, fallbackName: string) {
-  const safeCode = String(
-    ord.orderCode || ord.orderNumber || ord.id || "faktur"
-  ).replace(/[^a-zA-Z0-9-_]/g, "");
-  const content = "\uFEFF" + formatReceiptText(ord, fallbackName);
-  const blob = new Blob([content], { type: "text/plain;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-
-  const link = document.createElement("a");
-  link.href = url;
-  link.setAttribute("download", `faktur-${safeCode || "pesanan"}.txt`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
-
-// Membuka tampilan nota bersih pada jendela cetak browser agar bisa dicetak atau disimpan sebagai PDF
-function printInvoicePdf(ord: OrderRecord, fallbackName: string) {
-  const escapedText = formatReceiptText(ord, fallbackName)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-
-  const printWin = window.open("", "_blank", "width=460,height=640");
+  const printWin = window.open("", "_blank", "width=520,height=720");
   if (!printWin) {
     window.print();
     return;
@@ -217,26 +186,150 @@ function printInvoicePdf(ord: OrderRecord, fallbackName: string) {
 
   printWin.document.write(`
     <!DOCTYPE html>
-    <html>
+    <html lang="id">
       <head>
-        <title>Faktur Pesanan</title>
+        <meta charset="UTF-8" />
+        <title>Faktur Pesanan ${escapeHtml(codeText)}</title>
         <style>
+          * { box-sizing: border-box; }
           body {
-            font-family: "Courier New", Courier, monospace;
-            padding: 24px;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            padding: 28px;
             color: #2A1A11;
             background: #FFFFFF;
-          }
-          pre {
-            white-space: pre-wrap;
-            font-size: 13px;
-            line-height: 1.5;
             margin: 0;
+          }
+          .invoice-box {
+            max-width: 460px;
+            margin: 0 auto;
+            border: 1.5px solid #D6C7B2;
+            border-radius: 16px;
+            padding: 24px;
+          }
+          .header {
+            text-align: center;
+            border-bottom: 2px solid #2A1A11;
+            padding-bottom: 14px;
+            margin-bottom: 16px;
+          }
+          .header h1 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 900;
+            letter-spacing: 0.4px;
+          }
+          .header p {
+            margin: 4px 0 0;
+            font-size: 11.5px;
+            color: #6D4C30;
+            font-weight: 700;
+          }
+          .meta {
+            width: 100%;
+            font-size: 12px;
+            margin-bottom: 16px;
+            border-collapse: collapse;
+          }
+          .meta td {
+            padding: 3px 0;
+            vertical-align: top;
+          }
+          .meta td:first-child {
+            color: #6D4C30;
+            width: 120px;
+          }
+          .meta td:last-child {
+            font-weight: 700;
+          }
+          .items {
+            width: 100%;
+            font-size: 12.5px;
+            border-collapse: collapse;
+            margin-bottom: 14px;
+          }
+          .summary {
+            width: 100%;
+            font-size: 12.5px;
+            border-collapse: collapse;
+          }
+          .summary td {
+            padding: 4px 0;
+          }
+          .summary .grand td {
+            border-top: 2px solid #2A1A11;
+            padding-top: 10px;
+            margin-top: 6px;
+            font-size: 15px;
+            font-weight: 900;
+          }
+          .footer {
+            margin-top: 20px;
+            padding-top: 12px;
+            border-top: 1px dashed #D6C7B2;
+            text-align: center;
+            font-size: 11px;
+            color: #6D4C30;
+          }
+          @media print {
+            body { padding: 0; }
+            .invoice-box { border: none; max-width: 100%; }
           }
         </style>
       </head>
       <body>
-        <pre>${escapedText}</pre>
+        <div class="invoice-box">
+          <div class="header">
+            <h1>SOTO BANJAR SELERA NUSANTARA</h1>
+            <p>FAKTUR / NOTA PESANAN RESMI</p>
+          </div>
+
+          <table class="meta">
+            <tr><td>No. Faktur</td><td>${escapeHtml(codeText)}</td></tr>
+            <tr><td>Tanggal</td><td>${escapeHtml(dateText)}</td></tr>
+            <tr><td>Status</td><td>${escapeHtml(statusText)}</td></tr>
+            <tr><td>Penerima</td><td>${escapeHtml(recipient)}</td></tr>
+            <tr><td>Wilayah &amp; Kurir</td><td>${escapeHtml(area)} (${escapeHtml(service)})</td></tr>
+            <tr><td>Alamat</td><td>${escapeHtml(address)}</td></tr>
+            <tr><td>Pembayaran</td><td>${escapeHtml(payment)}</td></tr>
+            <tr><td>No. VA</td><td>${escapeHtml(String(vaNum))}</td></tr>
+          </table>
+
+          <table class="items">
+            <thead>
+              <tr>
+                <th style="text-align:left;padding-bottom:6px;border-bottom:1.5px solid #2A1A11;font-size:11px;">ITEM PESANAN</th>
+                <th style="text-align:right;padding-bottom:6px;border-bottom:1.5px solid #2A1A11;font-size:11px;">SUBTOTAL</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemRowsHtml}
+            </tbody>
+          </table>
+
+          <table class="summary">
+            <tr>
+              <td style="color:#6D4C30;">Ongkos Kirim</td>
+              <td style="text-align:right;font-weight:700;">Rp ${shippingCost.toLocaleString("id-ID")}</td>
+            </tr>
+            ${
+              discount > 0
+                ? `<tr>
+                    <td style="color:#166534;">Diskon Voucher</td>
+                    <td style="text-align:right;font-weight:700;color:#166534;">-Rp ${discount.toLocaleString("id-ID")}</td>
+                  </tr>`
+                : ""
+            }
+            <tr class="grand">
+              <td>TOTAL BAYAR</td>
+              <td style="text-align:right;">Rp ${totalCost.toLocaleString("id-ID")}</td>
+            </tr>
+          </table>
+
+          <div class="footer">
+            Terima kasih telah memesan di Soto Banjar Selera Nusantara.<br/>
+            Simpan dokumen ini sebagai bukti transaksi yang sah.
+          </div>
+        </div>
         <script>
           window.onload = function () {
             window.print();
@@ -418,7 +511,7 @@ export default function OrderHistoryModal({
     };
   }, [isOpen, activeUserName, activeUserEmail, syncTick]);
 
-  // Memproses konfirmasi customer setelah menyetujui pesanan diterima
+  // Memproses konfirmasi customer setelah menyetujui alert dialog "Yakin sudah diterima"
   async function handleConfirmOrderReceived(ord: OrderRecord) {
     const targetKey = normalizeId(ord);
     if (!targetKey) return;
@@ -532,6 +625,7 @@ export default function OrderHistoryModal({
     });
   }, [orders, activeTab]);
 
+  // Jika modal riwayat sedang tertutup, komponen tidak dirender
   if (!isOpen) return null;
 
   const tabs: { key: OrderStatusTab; label: string; count: number }[] = [
@@ -571,7 +665,7 @@ export default function OrderHistoryModal({
           boxShadow: "0 25px 60px rgba(0, 0, 0, 0.35)",
         }}
       >
-        {/* Header */}
+        {/* Header modal riwayat pesanan beserta tab filter status */}
         <div
           style={{
             backgroundColor: "#FFFFFF",
@@ -688,7 +782,7 @@ export default function OrderHistoryModal({
           </div>
         </div>
 
-        {/* Notifikasi setelah customer mengonfirmasi pesanan diterima */}
+        {/* Banner notifikasi setelah customer mengonfirmasi pesanan diterima */}
         {successNotice && (
           <div
             style={{
@@ -706,7 +800,7 @@ export default function OrderHistoryModal({
           </div>
         )}
 
-        {/* Daftar pesanan beserta tombol konfirmasi selesai & download/cetak faktur */}
+        {/* Daftar kartu pesanan beserta tombol konfirmasi selesai & simpan/cetak faktur PDF */}
         <div
           style={{
             padding: "20px 24px",
@@ -847,7 +941,7 @@ export default function OrderHistoryModal({
                     </span>
                   </div>
 
-                  {/* Informasi nomor Virtual Account */}
+                  {/* Informasi nomor Virtual Account beserta tombol salin cepat */}
                   <div
                     style={{
                       backgroundColor: "#FAF6EE",
@@ -1064,7 +1158,7 @@ export default function OrderHistoryModal({
                       <span>Rp {totalCost.toLocaleString("id-ID")}</span>
                     </div>
 
-                    {/* Tombol konfirmasi pesanan selesai (hanya aktif setelah admin mengubah status menjadi SELESAI) & unduh/cetak faktur */}
+                    {/* Tombol konfirmasi pesanan selesai (hanya aktif setelah admin mengubah status menjadi SELESAI) & simpan faktur PDF */}
                     <div
                       style={{
                         display: "flex",
@@ -1125,7 +1219,9 @@ export default function OrderHistoryModal({
 
                       <button
                         type="button"
-                        onClick={() => downloadInvoiceTxt(ord, activeUserName)}
+                        onClick={() =>
+                          downloadOrPrintInvoicePdf(ord, activeUserName)
+                        }
                         style={{
                           padding: "7px 14px",
                           borderRadius: "9px",
@@ -1137,24 +1233,7 @@ export default function OrderHistoryModal({
                           cursor: "pointer",
                         }}
                       >
-                        Download Nota (.txt)
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => printInvoicePdf(ord, activeUserName)}
-                        style={{
-                          padding: "7px 14px",
-                          borderRadius: "9px",
-                          border: "1.5px solid #8A6B47",
-                          backgroundColor: "#FAF6EE",
-                          color: "#2A1A11",
-                          fontSize: "11.5px",
-                          fontWeight: 800,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Cetak / Simpan PDF
+                        Download / Cetak Faktur (PDF)
                       </button>
                     </div>
                   </div>
@@ -1165,7 +1244,7 @@ export default function OrderHistoryModal({
         </div>
       </div>
 
-      {/* alert konfirmasi sebelum customer menandai pesanan sudah diterima */}
+      {/* Modal alert konfirmasi sebelum customer menandai pesanan sudah diterima */}
       {pendingConfirmOrder && (
         <div
           onClick={() => setPendingConfirmOrder(null)}

@@ -30,9 +30,9 @@ export interface BadgeMetaEntry {
   badgeColor: string;
 }
 
-const DEFAULT_BADGE_PRESETS = ["Sold Out", "Best Seller", "Rekomendasi", "Pedas"] as const;
+const DEFAULT_BADGE_PRESETS = ["Sold Out", "Best Seller", "Rekomendasi", "Pedas"];
 
-// Palet warna badge yang bisa dipilih admin untuk tiap menu
+// Palet warna cepat yang bisa diklik langsung oleh admin
 const BADGE_COLOR_PALETTE = [
   { id: "amber", label: "Emas", bg: "#D97706", text: "#FFFFFF" },
   { id: "red", label: "Merah", bg: "#DC2626", text: "#FFFFFF" },
@@ -45,6 +45,25 @@ const BADGE_COLOR_PALETTE = [
 
 const MENU_BADGE_MAP_KEY = "soto_menu_badge_map";
 const CUSTOM_BADGE_LIST_KEY = "soto_custom_badge_presets";
+
+function getContrastTextForHex(hexColor: string): string {
+  const clean = hexColor.replace("#", "").trim();
+  if (!/^[0-9a-fA-F]{6}$/.test(clean)) return "#FFFFFF";
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.62 ? "#2A1A11" : "#FFFFFF";
+}
+
+function resolveHexColorValue(badgeColor?: string | null): string {
+  const raw = String(badgeColor ?? "").trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw;
+  const matched = BADGE_COLOR_PALETTE.find(
+    (c) => c.id === raw.toLowerCase()
+  );
+  return matched ? matched.bg : "#D97706";
+}
 
 function readMenuBadgeMap(): Record<string, BadgeMetaEntry> {
   try {
@@ -71,50 +90,64 @@ function saveMenuBadgeMapEntry(
     } else {
       current[key] = {
         badge: entry.badge.trim(),
-        badgeColor: entry.badgeColor || "amber",
+        badgeColor: entry.badgeColor || "#D97706",
       };
     }
     localStorage.setItem(MENU_BADGE_MAP_KEY, JSON.stringify(current));
   } catch {}
 }
 
-function readCustomBadgePresets(): string[] {
+// Membaca daftar seluruh pilihan badge (bawaan + custom) dari localStorage
+function readAllBadgePresets(): string[] {
+  if (typeof window === "undefined") return [...DEFAULT_BADGE_PRESETS];
   try {
     const raw = localStorage.getItem(CUSTOM_BADGE_LIST_KEY);
-    if (!raw) return [];
+    if (raw === null) {
+      localStorage.setItem(
+        CUSTOM_BADGE_LIST_KEY,
+        JSON.stringify(DEFAULT_BADGE_PRESETS)
+      );
+      return [...DEFAULT_BADGE_PRESETS];
+    }
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed)
-      ? parsed.map((x) => String(x).trim()).filter(Boolean)
-      : [];
-  } catch {
-    return [];
-  }
+    if (Array.isArray(parsed)) {
+      return parsed.map((x) => String(x).trim()).filter(Boolean);
+    }
+  } catch {}
+  return [...DEFAULT_BADGE_PRESETS];
 }
 
-// Menyimpan teks badge custom
+// Menyimpan daftar pilihan badge terbaru ke localStorage
+function writeAllBadgePresets(list: string[]) {
+  try {
+    localStorage.setItem(CUSTOM_BADGE_LIST_KEY, JSON.stringify(list));
+  } catch {}
+}
+
+// Menambahkan teks badge baru ke daftar pilihan badge jika belum ada
 function saveCustomBadgePreset(label: string) {
   const clean = label.trim();
   if (!clean) return;
-  try {
-    const existing = readCustomBadgePresets();
-    const exists = existing.some(
-      (item) => item.toLowerCase() === clean.toLowerCase()
-    );
-    const defaultExists = DEFAULT_BADGE_PRESETS.some(
-      (item) => item.toLowerCase() === clean.toLowerCase()
-    );
-    if (!exists && !defaultExists) {
-      localStorage.setItem(
-        CUSTOM_BADGE_LIST_KEY,
-        JSON.stringify([...existing, clean])
-      );
-    }
-  } catch {}
+  const existing = readAllBadgePresets();
+  const exists = existing.some(
+    (item) => item.toLowerCase() === clean.toLowerCase()
+  );
+  if (!exists) {
+    writeAllBadgePresets([...existing, clean]);
+  }
 }
 
 // Mengambil warna tampilan badge
 function getBadgeStyleFromPalette(badgeText: string, badgeColor?: string | null) {
-  const key = String(badgeColor ?? "").trim().toLowerCase();
+  const raw = String(badgeColor ?? "").trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(raw)) {
+    return {
+      background: raw,
+      color: getContrastTextForHex(raw),
+    };
+  }
+
+  const key = raw.toLowerCase();
   const matched = BADGE_COLOR_PALETTE.find((c) => c.id === key);
   if (matched) {
     return { background: matched.bg, color: matched.text };
@@ -139,7 +172,7 @@ function isSoldOutBadgeText(badgeText: string): boolean {
   return n === "sold out" || n === "habis";
 }
 
-// Merapikan format
+// Merapikan format daftar rempah
 function formatSpicesText(raw: unknown): string {
   if (!raw) return "";
   if (Array.isArray(raw)) {
@@ -209,10 +242,10 @@ export default function AdminMenuPage() {
     "Kemasan thermal pouch tahan panas"
   );
   const [badge, setBadge] = useState<string>("");
-  const [badgeColor, setBadgeColor] = useState<string>("amber");
+  const [badgeColor, setBadgeColor] = useState<string>("#D97706");
   const [newBadgeOptionInput, setNewBadgeOptionInput] = useState<string>("");
-  const [customBadgeList, setCustomBadgeList] = useState<string[]>(() =>
-    readCustomBadgePresets()
+  const [badgePresets, setBadgePresets] = useState<string[]>(() =>
+    readAllBadgePresets()
   );
 
   // Menggabungkan data menu dari API dengan data badge custom di localStorage
@@ -232,7 +265,7 @@ export default function AdminMenuPage() {
       const resolvedColor =
         item.badgeColor ||
         savedEntry?.badgeColor ||
-        (isSoldOutBadgeText(resolvedBadge) ? "red" : "amber");
+        (isSoldOutBadgeText(resolvedBadge) ? "#DC2626" : "#D97706");
 
       return {
         ...item,
@@ -288,14 +321,33 @@ export default function AdminMenuPage() {
     } catch {}
   }
 
-  // Menambahkan pilihan badge baru
+  // Menambahkan pilihan badge baru ke daftar pilihan badge
   function handleAddCustomBadgeOption() {
     const clean = newBadgeOptionInput.trim();
     if (!clean) return;
     saveCustomBadgePreset(clean);
-    setCustomBadgeList(readCustomBadgePresets());
+    setBadgePresets(readAllBadgePresets());
     setBadge(clean);
     setNewBadgeOptionInput("");
+  }
+
+  // Menghapus pilihan badge tertentu (termasuk 4 badge awal) dari daftar pilihan
+  function handleDeleteBadgePreset(targetLabel: string) {
+    const nextList = badgePresets.filter(
+      (item) => item.toLowerCase() !== targetLabel.toLowerCase()
+    );
+    writeAllBadgePresets(nextList);
+    setBadgePresets(nextList);
+
+    if (badge.trim().toLowerCase() === targetLabel.trim().toLowerCase()) {
+      setBadge("");
+    }
+  }
+
+  // Mengembalikan 4 badge bawaan apabila dibutuhkan
+  function handleRestoreDefaultBadges() {
+    writeAllBadgePresets([...DEFAULT_BADGE_PRESETS]);
+    setBadgePresets([...DEFAULT_BADGE_PRESETS]);
   }
 
   // Mengirim request POST untuk menambah kategori baru ke database
@@ -411,7 +463,7 @@ export default function AdminMenuPage() {
     setSpices("Kayu manis, kapulaga, cengkih, pala");
     setPackagingInfo("Kemasan thermal pouch tahan panas");
     setBadge("");
-    setBadgeColor("amber");
+    setBadgeColor("#D97706");
     setNewBadgeOptionInput("");
     setIsModalOpen(true);
   }
@@ -444,7 +496,9 @@ export default function AdminMenuPage() {
     const currentBadge = String(item.badge ?? "").trim();
     setBadge(currentBadge);
     setBadgeColor(
-      item.badgeColor || (isSoldOutBadgeText(currentBadge) ? "red" : "amber")
+      resolveHexColorValue(
+        item.badgeColor || (isSoldOutBadgeText(currentBadge) ? "#DC2626" : "#D97706")
+      )
     );
     setNewBadgeOptionInput("");
     setIsModalOpen(true);
@@ -469,9 +523,10 @@ export default function AdminMenuPage() {
     const cleanBadge = badge.trim();
     if (cleanBadge) {
       saveCustomBadgePreset(cleanBadge);
-      setCustomBadgeList(readCustomBadgePresets());
+      setBadgePresets(readAllBadgePresets());
     }
 
+    const normalizedHexColor = resolveHexColorValue(badgeColor);
     const isSoldOut = isSoldOutBadgeText(cleanBadge);
     const isRecBadge =
       cleanBadge.toLowerCase().includes("rekomendasi") ||
@@ -493,7 +548,7 @@ export default function AdminMenuPage() {
       packagingInfo: packagingInfo.trim() || "Kemasan thermal pouch tahan panas",
       packaging: packagingInfo.trim() || "Kemasan thermal pouch tahan panas",
       badge: cleanBadge || null,
-      badgeColor: cleanBadge ? badgeColor : null,
+      badgeColor: cleanBadge ? normalizedHexColor : null,
       popular: isRecBadge,
       isRecommended: isRecBadge,
       isFavorite: isRecBadge,
@@ -504,7 +559,7 @@ export default function AdminMenuPage() {
       if (editingMenu) {
         saveMenuBadgeMapEntry(
           editingMenu.id,
-          cleanBadge ? { badge: cleanBadge, badgeColor } : null
+          cleanBadge ? { badge: cleanBadge, badgeColor: normalizedHexColor } : null
         );
 
         const res = await fetch(`/api/menu/${editingMenu.id}`, {
@@ -526,7 +581,7 @@ export default function AdminMenuPage() {
                   ...payload,
                   ...serverRecord,
                   badge: cleanBadge || null,
-                  badgeColor: cleanBadge ? badgeColor : null,
+                  badgeColor: cleanBadge ? normalizedHexColor : null,
                   available: !isSoldOut,
                 }
               : m
@@ -551,14 +606,14 @@ export default function AdminMenuPage() {
             ...payload,
             id: serverCreated.id ?? created.id,
             badge: cleanBadge || null,
-            badgeColor: cleanBadge ? badgeColor : null,
+            badgeColor: cleanBadge ? normalizedHexColor : null,
             available: !isSoldOut,
           };
         }
 
         saveMenuBadgeMapEntry(
           created.id,
-          cleanBadge ? { badge: cleanBadge, badgeColor } : null
+          cleanBadge ? { badge: cleanBadge, badgeColor: normalizedHexColor } : null
         );
         setMenus((prev) => [created, ...prev]);
       }
@@ -587,16 +642,8 @@ export default function AdminMenuPage() {
     }
   }
 
-  // Menyusun daftar tab kategori dan menggabungkan pilihan badge
+  // Menyusun daftar tab kategori
   const allTabs = useMemo(() => ["ALL", ...categoryList], [categoryList]);
-
-  const badgeChoices = useMemo(() => {
-    const merged = [...DEFAULT_BADGE_PRESETS, ...customBadgeList];
-    return merged.filter(
-      (item, idx, arr) =>
-        arr.findIndex((x) => x.toLowerCase() === item.toLowerCase()) === idx
-    );
-  }, [customBadgeList]);
 
   // Menyaring daftar menu berdasarkan kategori
   const filteredMenus = useMemo(() => {
@@ -618,7 +665,8 @@ export default function AdminMenuPage() {
     [menus]
   );
 
-  const previewColors = getBadgeStyleFromPalette(badge || "Badge", badgeColor);
+  const activeHexColor = resolveHexColorValue(badgeColor);
+  const previewColors = getBadgeStyleFromPalette(badge || "Badge", activeHexColor);
 
   return (
     <div
@@ -717,7 +765,7 @@ export default function AdminMenuPage() {
           gap: "24px",
         }}
       >
-        {/* statistik menu */}
+        {/* Statistik menu */}
         <div
           style={{
             display: "grid",
@@ -797,7 +845,7 @@ export default function AdminMenuPage() {
           </div>
         </div>
 
-        {/* filter kategori dan pencarian nama menu */}
+        {/* Filter kategori dan pencarian nama menu */}
         <div
           style={{
             backgroundColor: "#FFFFFF",
@@ -1459,7 +1507,7 @@ export default function AdminMenuPage() {
         </div>
       )}
 
-      {/* form tambah atau edit menu beserta pengaturan badge custom dan warnanya */}
+      {/* Form tambah atau edit menu beserta pengaturan badge custom dan roda warna */}
       {isModalOpen && (
         <div
           style={{
@@ -1726,7 +1774,7 @@ export default function AdminMenuPage() {
               </div>
             </div>
 
-            {/* Kontrol badge menu*/}
+            {/* Kontrol badge menu */}
             <div
               style={{
                 backgroundColor: "#FAF6EE",
@@ -1773,23 +1821,44 @@ export default function AdminMenuPage() {
                   )}
                 </div>
 
-                {badge && (
-                  <button
-                    type="button"
-                    onClick={() => setBadge("")}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "#DC2626",
-                      fontSize: "11px",
-                      fontWeight: 800,
-                      cursor: "pointer",
-                      padding: 0,
-                    }}
-                  >
-                    Hapus Badge
-                  </button>
-                )}
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  {badgePresets.length < DEFAULT_BADGE_PRESETS.length && (
+                    <button
+                      type="button"
+                      onClick={handleRestoreDefaultBadges}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "#6D4C30",
+                        fontSize: "11px",
+                        fontWeight: 800,
+                        textDecoration: "underline",
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      Reset
+                    </button>
+                  )}
+
+                  {badge && (
+                    <button
+                      type="button"
+                      onClick={() => setBadge("")}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "#DC2626",
+                        fontSize: "11px",
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      Hapus Badge
+                    </button>
+                  )}
+                </div>
               </div>
 
               <input
@@ -1812,6 +1881,12 @@ export default function AdminMenuPage() {
                   type="text"
                   value={newBadgeOptionInput}
                   onChange={(e) => setNewBadgeOptionInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddCustomBadgeOption();
+                    }
+                  }}
                   placeholder="Buat badge baru (misal: Hemat, Porsi Jumbo)..."
                   style={{
                     flex: 1,
@@ -1841,102 +1916,234 @@ export default function AdminMenuPage() {
                 </button>
               </div>
 
+              {/* Daftar pilihan badge dengan tombol hapus (x) pada setiap badge */}
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                {badgeChoices.map((preset) => {
+                {badgePresets.map((preset) => {
                   const active = badge.toLowerCase() === preset.toLowerCase();
                   return (
-                    <button
-                      type="button"
+                    <div
                       key={preset}
-                      onClick={() => {
-                        setBadge(preset);
-                        if (
-                          preset.toLowerCase() === "sold out" ||
-                          preset.toLowerCase().includes("pedas")
-                        ) {
-                          setBadgeColor("red");
-                        } else if (
-                          preset.toLowerCase().includes("rekomendasi") ||
-                          preset.toLowerCase().includes("best")
-                        ) {
-                          setBadgeColor("amber");
-                        }
-                      }}
                       style={{
-                        padding: "5px 10px",
+                        display: "inline-flex",
+                        alignItems: "center",
                         borderRadius: "8px",
-                        fontSize: "11px",
-                        fontWeight: 800,
-                        cursor: "pointer",
                         border: active
                           ? "1.5px solid #2A1A11"
                           : "1px solid #D6C7B2",
                         backgroundColor: active ? "#2A1A11" : "#FFFFFF",
                         color: active ? "#EFE3C8" : "#2A1A11",
+                        overflow: "hidden",
                       }}
                     >
-                      {preset}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBadge(preset);
+                          if (
+                            preset.toLowerCase() === "sold out" ||
+                            preset.toLowerCase().includes("pedas")
+                          ) {
+                            setBadgeColor("#DC2626");
+                          } else if (
+                            preset.toLowerCase().includes("rekomendasi") ||
+                            preset.toLowerCase().includes("best")
+                          ) {
+                            setBadgeColor("#D97706");
+                          }
+                        }}
+                        style={{
+                          padding: "5px 8px 5px 10px",
+                          border: "none",
+                          background: "transparent",
+                          color: "inherit",
+                          fontSize: "11px",
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {preset}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteBadgePreset(preset)}
+                        title={`Hapus badge "${preset}"`}
+                        aria-label={`Hapus badge ${preset}`}
+                        style={{
+                          padding: "5px 8px 5px 4px",
+                          border: "none",
+                          background: "transparent",
+                          color: active ? "#FCA5A5" : "#DC2626",
+                          fontSize: "12px",
+                          fontWeight: 900,
+                          cursor: "pointer",
+                          lineHeight: 1,
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
                   );
                 })}
               </div>
 
+              {/* Pemilih warna bebas (Color Wheel Picker) */}
               <div
                 style={{
                   borderTop: "1px dashed #D6C7B2",
-                  paddingTop: "8px",
+                  paddingTop: "10px",
                   display: "flex",
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                  gap: "6px",
+                  flexDirection: "column",
+                  gap: "8px",
                 }}
               >
-                <span
+                <div
                   style={{
-                    fontSize: "11.5px",
-                    fontWeight: 800,
-                    color: "#432818",
-                    marginRight: "4px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                    gap: "10px",
                   }}
                 >
-                  Warna Badge:
-                </span>
-                {BADGE_COLOR_PALETTE.map((opt) => {
-                  const selected = badgeColor === opt.id;
-                  return (
-                    <button
-                      type="button"
-                      key={opt.id}
-                      onClick={() => setBadgeColor(opt.id)}
+                  <span
+                    style={{
+                      fontSize: "11.5px",
+                      fontWeight: 800,
+                      color: "#432818",
+                    }}
+                  >
+                    Warna Badge (Pilih Bebas):
+                  </span>
+
+                  {/* Tombol Roda Warna Pelangi + Kode Hex */}
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      backgroundColor: "#FFFFFF",
+                      border: "1.5px solid #D6C7B2",
+                      borderRadius: "999px",
+                      padding: "4px 12px 4px 5px",
+                    }}
+                  >
+                    <label
+                      title="Klik untuk membuka roda warna bebas"
                       style={{
+                        position: "relative",
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: "50%",
+                        background:
+                          "conic-gradient(from 90deg, #FF0000, #FFFF00, #00FF00, #00FFFF, #0000FF, #FF00FF, #FF0000)",
+                        border: "2px solid #FFFFFF",
+                        boxShadow: "0 0 0 1.5px #8A6B47",
+                        cursor: "pointer",
                         display: "inline-flex",
                         alignItems: "center",
-                        gap: "5px",
-                        padding: "5px 9px",
-                        borderRadius: "8px",
-                        fontSize: "11px",
-                        fontWeight: 800,
-                        cursor: "pointer",
-                        border: selected
-                          ? "2px solid #2A1A11"
-                          : "1px solid #D6C7B2",
-                        backgroundColor: "#FFFFFF",
-                        color: "#2A1A11",
+                        justifyContent: "center",
+                        overflow: "hidden",
+                        flexShrink: 0,
                       }}
                     >
-                      <span
+                      <input
+                        type="color"
+                        value={activeHexColor}
+                        onChange={(e) => setBadgeColor(e.target.value)}
+                        aria-label="Pilih warna badge bebas"
                         style={{
-                          width: "11px",
-                          height: "11px",
-                          borderRadius: "50%",
-                          backgroundColor: opt.bg,
-                          display: "inline-block",
+                          position: "absolute",
+                          inset: 0,
+                          width: "100%",
+                          height: "100%",
+                          opacity: 0,
+                          cursor: "pointer",
                         }}
                       />
-                      <span>{opt.label}</span>
-                    </button>
-                  );
-                })}
+                    </label>
+
+                    <span
+                      style={{
+                        width: "14px",
+                        height: "14px",
+                        borderRadius: "4px",
+                        backgroundColor: activeHexColor,
+                        border: "1px solid rgba(0,0,0,0.2)",
+                        display: "inline-block",
+                      }}
+                    />
+
+                    <input
+                      type="text"
+                      value={activeHexColor.toUpperCase()}
+                      onChange={(e) => {
+                        const val = e.target.value.trim();
+                        if (/^#?[0-9a-fA-F]{0,6}$/.test(val)) {
+                          setBadgeColor(val.startsWith("#") ? val : `#${val}`);
+                        }
+                      }}
+                      maxLength={7}
+                      aria-label="Kode warna hex"
+                      style={{
+                        width: "66px",
+                        border: "none",
+                        background: "transparent",
+                        fontSize: "11.5px",
+                        fontWeight: 800,
+                        color: "#2A1A11",
+                        outline: "none",
+                        fontFamily: "monospace",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  {BADGE_COLOR_PALETTE.map((opt) => {
+                    const selected =
+                      activeHexColor.toLowerCase() === opt.bg.toLowerCase();
+                    return (
+                      <button
+                        type="button"
+                        key={opt.id}
+                        onClick={() => setBadgeColor(opt.bg)}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          padding: "4px 9px",
+                          borderRadius: "8px",
+                          fontSize: "11px",
+                          fontWeight: 800,
+                          cursor: "pointer",
+                          border: selected
+                            ? "2px solid #2A1A11"
+                            : "1px solid #D6C7B2",
+                          backgroundColor: "#FFFFFF",
+                          color: "#2A1A11",
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: "11px",
+                            height: "11px",
+                            borderRadius: "50%",
+                            backgroundColor: opt.bg,
+                            display: "inline-block",
+                          }}
+                        />
+                        <span>{opt.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
