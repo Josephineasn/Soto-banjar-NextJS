@@ -31,6 +31,17 @@ const CARD_BADGE_PALETTE: Record<string, { background: string; color: string }> 
     pink: { background: "#DB2777", color: "#FFFFFF" },
 };
 
+// Menghitung warna teks (putih atau coklat gelap) agar kontras di atas latar hex apa pun
+function getCardContrastTextColor(hexColor: string): string {
+    const clean = hexColor.replace("#", "").trim();
+    if (!/^[0-9a-fA-F]{6}$/.test(clean)) return "#FFFFFF";
+    const r = parseInt(clean.slice(0, 2), 16);
+    const g = parseInt(clean.slice(2, 4), 16);
+    const b = parseInt(clean.slice(4, 6), 16);
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.62 ? "#2A1A11" : "#FFFFFF";
+}
+
 export function getItemSpicyLevel(item: MenuItem): string {
     const raw = item as MenuFilterMeta;
     const text = String(
@@ -75,6 +86,7 @@ export function matchesSpecificMenuFilter(
 function readSavedBadgeForCard(
     id: string | number
 ): { badge?: string; badgeColor?: string } | null {
+    if (typeof window === "undefined") return null;
     try {
         const raw = localStorage.getItem(MENU_BADGE_MAP_KEY);
         if (!raw) return null;
@@ -98,7 +110,15 @@ function getCardBadgeColors(
     badgeText: string,
     badgeColor?: string | null
 ): { background: string; color: string } {
-    const key = String(badgeColor ?? "").trim().toLowerCase();
+    const raw = String(badgeColor ?? "").trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(raw)) {
+        return {
+            background: raw,
+            color: getCardContrastTextColor(raw),
+        };
+    }
+
+    const key = raw.toLowerCase();
     if (key && CARD_BADGE_PALETTE[key]) {
         return CARD_BADGE_PALETTE[key];
     }
@@ -142,7 +162,7 @@ export default function MenuCard({
             window.removeEventListener("soto-menu-updated", syncLocal);
             window.removeEventListener("storage", syncLocal);
         };
-    }, [item.id]);
+    }, [item.id, rawItem.badge, rawItem.badgeColor]);
 
     // Menentukan teks badge aktif, warna badge, dan status ketersediaan menu
     const activeBadge = String(

@@ -30,23 +30,31 @@ export interface BadgeMetaEntry {
   badgeColor: string;
 }
 
+export interface BadgeColorOption {
+  hex: string;
+  label: string;
+}
+
 const DEFAULT_BADGE_PRESETS = ["Sold Out", "Best Seller", "Rekomendasi", "Pedas"];
 
-const BADGE_COLOR_PALETTE = [
-  { id: "amber", label: "Emas", bg: "#D97706", text: "#FFFFFF" },
-  { id: "red", label: "Merah", bg: "#DC2626", text: "#FFFFFF" },
-  { id: "brown", label: "Coklat Tua", bg: "#2A1A11", text: "#EFE3C8" },
-  { id: "green", label: "Hijau", bg: "#15803D", text: "#FFFFFF" },
-  { id: "blue", label: "Biru", bg: "#1D4ED8", text: "#FFFFFF" },
-  { id: "purple", label: "Ungu", bg: "#7E22CE", text: "#FFFFFF" },
-  { id: "pink", label: "Pink", bg: "#DB2777", text: "#FFFFFF" },
-] as const;
+// Daftar warna awal yang namanya juga bisa diedit atau dihapus admin
+const DEFAULT_BADGE_COLOR_OPTIONS: BadgeColorOption[] = [
+  { hex: "#D97706", label: "Emas" },
+  { hex: "#DC2626", label: "Merah" },
+  { hex: "#2A1A11", label: "Coklat Tua" },
+  { hex: "#15803D", label: "Hijau" },
+  { hex: "#1D4ED8", label: "Biru" },
+  { hex: "#7E22CE", label: "Ungu" },
+  { hex: "#DB2777", label: "Pink" },
+];
 
 const MENU_BADGE_MAP_KEY = "soto_menu_badge_map";
 const CUSTOM_BADGE_LIST_KEY = "soto_custom_badge_presets";
-const SAVED_BADGE_COLORS_KEY = "soto_saved_badge_colors";
+const BADGE_COLOR_OPTIONS_KEY = "soto_badge_color_options";
+const LEGACY_SAVED_COLORS_KEY = "soto_saved_badge_colors";
 const ADMIN_MENUS_CACHE_KEY = "soto_admin_menus_cache";
 
+// Menghitung warna teks (putih atau coklat gelap) agar kontras di atas warna hex apa pun
 function getContrastTextForHex(hexColor: string): string {
   const clean = hexColor.replace("#", "").trim();
   if (!/^[0-9a-fA-F]{6}$/.test(clean)) return "#FFFFFF";
@@ -57,40 +65,78 @@ function getContrastTextForHex(hexColor: string): string {
   return luminance > 0.62 ? "#2A1A11" : "#FFFFFF";
 }
 
+// Mengonversi nilai badgeColor (nama preset lama atau kode hex) menjadi kode hex valid
 function resolveHexColorValue(badgeColor?: string | null): string {
   const raw = String(badgeColor ?? "").trim();
   if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toUpperCase();
-  const matched = BADGE_COLOR_PALETTE.find(
-    (c) => c.id === raw.toLowerCase()
-  );
-  return matched ? matched.bg : "#D97706";
+
+  const legacyIdMap: Record<string, string> = {
+    amber: "#D97706",
+    red: "#DC2626",
+    brown: "#2A1A11",
+    green: "#15803D",
+    blue: "#1D4ED8",
+    purple: "#7E22CE",
+    pink: "#DB2777",
+  };
+  return legacyIdMap[raw.toLowerCase()] || "#D97706";
 }
 
+// Membaca seluruh pilihan warna beserta nama kustomnya dari localStorage
+function readBadgeColorOptions(): BadgeColorOption[] {
+  if (typeof window === "undefined") return [...DEFAULT_BADGE_COLOR_OPTIONS];
+  try {
+    const raw = localStorage.getItem(BADGE_COLOR_OPTIONS_KEY);
+    if (raw !== null) {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((item) => {
+            const obj = item as Partial<BadgeColorOption>;
+            const hex = String(obj?.hex ?? "").trim().toUpperCase();
+            const label = String(obj?.label ?? "").trim() || hex;
+            return { hex, label };
+          })
+          .filter((item) => /^#[0-9A-F]{6}$/.test(item.hex));
+      }
+    }
+
+    // Migrasi otomatis dari key warna tersimpan versi sebelumnya jika ada
+    const legacyRaw = localStorage.getItem(LEGACY_SAVED_COLORS_KEY);
+    const merged: BadgeColorOption[] = [...DEFAULT_BADGE_COLOR_OPTIONS];
+    if (legacyRaw) {
+      const legacyParsed: unknown = JSON.parse(legacyRaw);
+      if (Array.isArray(legacyParsed)) {
+        for (const item of legacyParsed) {
+          const hex = String(item).trim().toUpperCase();
+          if (
+            /^#[0-9A-F]{6}$/.test(hex) &&
+            !merged.some((m) => m.hex === hex)
+          ) {
+            merged.push({ hex, label: hex });
+          }
+        }
+      }
+    }
+    localStorage.setItem(BADGE_COLOR_OPTIONS_KEY, JSON.stringify(merged));
+    return merged;
+  } catch {}
+  return [...DEFAULT_BADGE_COLOR_OPTIONS];
+}
+
+// Menyimpan daftar pilihan warna beserta nama kustomnya ke localStorage
+function writeBadgeColorOptions(options: BadgeColorOption[]) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(BADGE_COLOR_OPTIONS_KEY, JSON.stringify(options));
+  } catch {}
+}
+
+// Menyimpan daftar menu terbaru ke localStorage agar langsung terbaca oleh halaman Customer
 function writeAdminMenusCache(list: MenuItem[]) {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(ADMIN_MENUS_CACHE_KEY, JSON.stringify(list));
-  } catch {}
-}
-
-function readSavedWheelColors(): string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(SAVED_BADGE_COLORS_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return parsed
-        .map((c) => String(c).trim().toUpperCase())
-        .filter((c) => /^#[0-9A-F]{6}$/.test(c));
-    }
-  } catch {}
-  return [];
-}
-
-function writeSavedWheelColors(colors: string[]) {
-  try {
-    localStorage.setItem(SAVED_BADGE_COLORS_KEY, JSON.stringify(colors));
   } catch {}
 }
 
@@ -146,6 +192,7 @@ function readAllBadgePresets(): string[] {
   return [...DEFAULT_BADGE_PRESETS];
 }
 
+// Menyimpan daftar pilihan badge terbaru ke localStorage
 function writeAllBadgePresets(list: string[]) {
   try {
     localStorage.setItem(CUSTOM_BADGE_LIST_KEY, JSON.stringify(list));
@@ -165,7 +212,7 @@ function saveCustomBadgePreset(label: string) {
   }
 }
 
-// Mengambil warna tampilan badge
+// Mengambil warna tampilan badge (mendukung kode hex bebas maupun preset lama)
 function getBadgeStyleFromPalette(badgeText: string, badgeColor?: string | null) {
   const raw = String(badgeColor ?? "").trim();
   if (/^#[0-9a-fA-F]{6}$/.test(raw)) {
@@ -176,9 +223,17 @@ function getBadgeStyleFromPalette(badgeText: string, badgeColor?: string | null)
   }
 
   const key = raw.toLowerCase();
-  const matched = BADGE_COLOR_PALETTE.find((c) => c.id === key);
-  if (matched) {
-    return { background: matched.bg, color: matched.text };
+  const legacyStyles: Record<string, { background: string; color: string }> = {
+    amber: { background: "#D97706", color: "#FFFFFF" },
+    red: { background: "#DC2626", color: "#FFFFFF" },
+    brown: { background: "#2A1A11", color: "#EFE3C8" },
+    green: { background: "#15803D", color: "#FFFFFF" },
+    blue: { background: "#1D4ED8", color: "#FFFFFF" },
+    purple: { background: "#7E22CE", color: "#FFFFFF" },
+    pink: { background: "#DB2777", color: "#FFFFFF" },
+  };
+  if (legacyStyles[key]) {
+    return legacyStyles[key];
   }
 
   const lower = badgeText.trim().toLowerCase();
@@ -231,6 +286,7 @@ function formatSpicesText(raw: unknown): string {
   return str;
 }
 
+// Mengompresi dan mengubah file gambar unggahan menjadi data URL agar ringan disimpan
 function compressUploadedImageToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -283,7 +339,7 @@ export default function AdminMenuPage() {
   );
   const [editingCatNewName, setEditingCatNewName] = useState<string>("");
 
-  // State modal form tambah/edit menu beserta badge, warna, dan unggah foto
+  // State modal form tambah/edit menu beserta badge, warna kustom, dan unggah foto
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingMenu, setEditingMenu] = useState<MenuItem | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -305,9 +361,14 @@ export default function AdminMenuPage() {
   const [badgePresets, setBadgePresets] = useState<string[]>(() =>
     readAllBadgePresets()
   );
-  const [savedWheelColors, setSavedWheelColors] = useState<string[]>(() =>
-    readSavedWheelColors()
+
+  // State daftar warna kustom beserta fitur beri nama & edit nama warna
+  const [colorOptions, setColorOptions] = useState<BadgeColorOption[]>(() =>
+    readBadgeColorOptions()
   );
+  const [newColorNameInput, setNewColorNameInput] = useState<string>("");
+  const [editingColorHex, setEditingColorHex] = useState<string | null>(null);
+  const [editingColorLabel, setEditingColorLabel] = useState<string>("");
 
   // Menggabungkan data menu dari API dengan data badge custom di localStorage
   function enrichMenusWithBadgeMap(rawList: MenuItem[]): MenuItem[] {
@@ -384,7 +445,7 @@ export default function AdminMenuPage() {
     } catch {}
   }
 
-  // Memproses file foto yang diunggah admin
+  // Memproses file foto yang diunggah admin dari komputer/HP menjadi gambar menu
   async function handleImageFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -434,25 +495,53 @@ export default function AdminMenuPage() {
     setBadgePresets([...DEFAULT_BADGE_PRESETS]);
   }
 
-  // Menyimpan warna yang dipilih dari color wheel ke daftar warna tersimpan
+  // Menyimpan atau memperbarui nama warna yang dipilih dari color wheel
   function handleSaveCurrentWheelColor() {
     const hex = resolveHexColorValue(badgeColor);
-    const alreadyInPalette = BADGE_COLOR_PALETTE.some(
-      (p) => p.bg.toUpperCase() === hex
-    );
-    const alreadySaved = savedWheelColors.some((c) => c === hex);
-    if (alreadyInPalette || alreadySaved) return;
+    const customLabel = newColorNameInput.trim() || hex;
+    const existingIndex = colorOptions.findIndex((c) => c.hex === hex);
 
-    const next = [...savedWheelColors, hex];
-    writeSavedWheelColors(next);
-    setSavedWheelColors(next);
+    let next: BadgeColorOption[];
+    if (existingIndex >= 0) {
+      next = colorOptions.map((c, i) =>
+        i === existingIndex ? { hex, label: customLabel } : c
+      );
+    } else {
+      next = [...colorOptions, { hex, label: customLabel }];
+    }
+
+    writeBadgeColorOptions(next);
+    setColorOptions(next);
+    setNewColorNameInput("");
   }
 
-  // Menghapus warna tersimpan dari daftar warna custom
-  function handleDeleteSavedWheelColor(targetHex: string) {
-    const next = savedWheelColors.filter((c) => c !== targetHex);
-    writeSavedWheelColors(next);
-    setSavedWheelColors(next);
+  // Menyimpan perubahan nama pada chip warna yang diedit langsung
+  function handleCommitRenameColor(targetHex: string) {
+    const cleanLabel = editingColorLabel.trim() || targetHex;
+    const next = colorOptions.map((c) =>
+      c.hex === targetHex ? { ...c, label: cleanLabel } : c
+    );
+    writeBadgeColorOptions(next);
+    setColorOptions(next);
+    setEditingColorHex(null);
+    setEditingColorLabel("");
+  }
+
+  // Menghapus chip warna dari daftar pilihan warna
+  function handleDeleteColorOption(targetHex: string) {
+    const next = colorOptions.filter((c) => c.hex !== targetHex);
+    writeBadgeColorOptions(next);
+    setColorOptions(next);
+    if (editingColorHex === targetHex) {
+      setEditingColorHex(null);
+      setEditingColorLabel("");
+    }
+  }
+
+  // Mengembalikan 7 warna awal beserta nama bawaannya jika diperlukan
+  function handleRestoreDefaultColors() {
+    writeBadgeColorOptions([...DEFAULT_BADGE_COLOR_OPTIONS]);
+    setColorOptions([...DEFAULT_BADGE_COLOR_OPTIONS]);
   }
 
   // Mengirim request POST untuk menambah kategori baru ke database
@@ -556,6 +645,7 @@ export default function AdminMenuPage() {
     }
   }
 
+  // Membuka modal tambah menu baru dengan seluruh input kosong
   function openAddModal() {
     setEditingMenu(null);
     setName("");
@@ -575,9 +665,12 @@ export default function AdminMenuPage() {
     setBadge("");
     setBadgeColor("#D97706");
     setNewBadgeOptionInput("");
+    setNewColorNameInput("");
+    setEditingColorHex(null);
     setIsModalOpen(true);
   }
 
+  // Mengisi form dengan data item menu yang dipilih untuk diedit
   function openEditModal(item: MenuItem) {
     setEditingMenu(item);
     setName(item.name || "");
@@ -607,10 +700,12 @@ export default function AdminMenuPage() {
       )
     );
     setNewBadgeOptionInput("");
+    setNewColorNameInput("");
+    setEditingColorHex(null);
     setIsModalOpen(true);
   }
 
-  // Menyimpan data menu baru (POST) atau perubahan menu (PATCH)
+  // Menyimpan data menu baru (POST) atau perubahan menu (PATCH) dan menyinkronkan ke cache Customer
   async function handleSaveMenu(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
@@ -783,9 +878,14 @@ export default function AdminMenuPage() {
 
   const activeHexColor = resolveHexColorValue(badgeColor);
   const previewColors = getBadgeStyleFromPalette(badge || "Badge", activeHexColor);
-  const isCurrentColorAlreadySaved =
-    BADGE_COLOR_PALETTE.some((p) => p.bg.toUpperCase() === activeHexColor) ||
-    savedWheelColors.includes(activeHexColor);
+  const matchedExistingColor = colorOptions.find(
+    (c) => c.hex === activeHexColor
+  );
+  const isColorAlreadySavedWithSameName =
+    Boolean(matchedExistingColor) &&
+    (!newColorNameInput.trim() ||
+      matchedExistingColor?.label.toLowerCase() ===
+        newColorNameInput.trim().toLowerCase());
 
   return (
     <div
@@ -1626,7 +1726,7 @@ export default function AdminMenuPage() {
         </div>
       )}
 
-      {/* Form tambah atau edit menu (tambah menu baru dimulai dengan seluruh input kosong) */}
+      {/* Form tambah atau edit menu */}
       {isModalOpen && (
         <div
           style={{
@@ -1897,7 +1997,7 @@ export default function AdminMenuPage() {
               </div>
             </div>
 
-            {/* Kontrol badge menu: tambah, hapus badge, dan simpan/hapus warna dari roda warna */}
+            {/* Kontrol badge menu: tambah, hapus badge, serta roda warna dengan nama kustom yang bisa diedit */}
             <div
               style={{
                 backgroundColor: "#FAF6EE",
@@ -2109,7 +2209,7 @@ export default function AdminMenuPage() {
                 })}
               </div>
 
-              {/* Pemilih warna bebas (Color Wheel Picker) + tombol Simpan Warna + daftar warna tersimpan */}
+              {/* Pemilih warna bebas (Color Wheel) + input nama warna + daftar chip warna yang bisa diedit namanya & dihapus */}
               <div
                 style={{
                   borderTop: "1px dashed #D6C7B2",
@@ -2125,7 +2225,7 @@ export default function AdminMenuPage() {
                     alignItems: "center",
                     justifyContent: "space-between",
                     flexWrap: "wrap",
-                    gap: "10px",
+                    gap: "8px",
                   }}
                 >
                   <span
@@ -2135,215 +2235,173 @@ export default function AdminMenuPage() {
                       color: "#432818",
                     }}
                   >
-                    Warna Badge (Pilih Bebas):
+                    Warna Badge (Pilih &amp; Beri Nama Sendiri):
                   </span>
 
-                  {/* Roda Warna Pelangi + Kode Hex + Tombol Simpan Warna */}
-                  <div
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      backgroundColor: "#FFFFFF",
-                      border: "1.5px solid #D6C7B2",
-                      borderRadius: "999px",
-                      padding: "4px 6px 4px 5px",
-                    }}
-                  >
-                    <label
-                      title="Klik untuk membuka roda warna bebas"
-                      style={{
-                        position: "relative",
-                        width: "28px",
-                        height: "28px",
-                        borderRadius: "50%",
-                        background:
-                          "conic-gradient(from 90deg, #FF0000, #FFFF00, #00FF00, #00FFFF, #0000FF, #FF00FF, #FF0000)",
-                        border: "2px solid #FFFFFF",
-                        boxShadow: "0 0 0 1.5px #8A6B47",
-                        cursor: "pointer",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        overflow: "hidden",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <input
-                        type="color"
-                        value={activeHexColor}
-                        onChange={(e) => setBadgeColor(e.target.value)}
-                        aria-label="Pilih warna badge bebas"
-                        style={{
-                          position: "absolute",
-                          inset: 0,
-                          width: "100%",
-                          height: "100%",
-                          opacity: 0,
-                          cursor: "pointer",
-                        }}
-                      />
-                    </label>
-
-                    <span
-                      style={{
-                        width: "14px",
-                        height: "14px",
-                        borderRadius: "4px",
-                        backgroundColor: activeHexColor,
-                        border: "1px solid rgba(0,0,0,0.2)",
-                        display: "inline-block",
-                      }}
-                    />
-
-                    <input
-                      type="text"
-                      value={activeHexColor}
-                      onChange={(e) => {
-                        const val = e.target.value.trim();
-                        if (/^#?[0-9a-fA-F]{0,6}$/.test(val)) {
-                          setBadgeColor(val.startsWith("#") ? val : `#${val}`);
-                        }
-                      }}
-                      maxLength={7}
-                      aria-label="Kode warna hex"
-                      style={{
-                        width: "66px",
-                        border: "none",
-                        background: "transparent",
-                        fontSize: "11.5px",
-                        fontWeight: 800,
-                        color: "#2A1A11",
-                        outline: "none",
-                        fontFamily: "monospace",
-                      }}
-                    />
-
+                  {colorOptions.length < DEFAULT_BADGE_COLOR_OPTIONS.length && (
                     <button
                       type="button"
-                      disabled={isCurrentColorAlreadySaved}
-                      onClick={handleSaveCurrentWheelColor}
-                      title={
-                        isCurrentColorAlreadySaved
-                          ? "Warna sudah ada di daftar"
-                          : "Simpan warna ini ke daftar pilihan"
-                      }
+                      onClick={handleRestoreDefaultColors}
                       style={{
-                        padding: "5px 10px",
-                        borderRadius: "999px",
+                        background: "none",
                         border: "none",
-                        backgroundColor: isCurrentColorAlreadySaved
-                          ? "#E5DEC9"
-                          : "#5C3A21",
-                        color: isCurrentColorAlreadySaved
-                          ? "#8A6B47"
-                          : "#FFFFFF",
+                        color: "#6D4C30",
                         fontSize: "11px",
                         fontWeight: 800,
-                        cursor: isCurrentColorAlreadySaved
-                          ? "default"
-                          : "pointer",
-                        whiteSpace: "nowrap",
+                        textDecoration: "underline",
+                        cursor: "pointer",
+                        padding: 0,
                       }}
                     >
-                      {isCurrentColorAlreadySaved
-                        ? "Tersimpan"
-                        : "+ Simpan Warna"}
+                      Reset 7 Warna Awal
                     </button>
-                  </div>
+                  )}
                 </div>
 
-                {/* Daftar warna custom tersimpan dari wheel (bisa dipilih ulang & dihapus dengan ×) */}
-                {savedWheelColors.length > 0 && (
-                  <div
+                {/* Roda Warna Pelangi + Kode Hex + Input Nama Warna + Tombol Simpan Warna */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: "8px",
+                    backgroundColor: "#FFFFFF",
+                    border: "1.5px solid #D6C7B2",
+                    borderRadius: "12px",
+                    padding: "6px 8px",
+                  }}
+                >
+                  <label
+                    title="Klik untuk membuka roda warna bebas"
                     style={{
-                      display: "flex",
-                      flexWrap: "wrap",
+                      position: "relative",
+                      width: "28px",
+                      height: "28px",
+                      borderRadius: "50%",
+                      background:
+                        "conic-gradient(from 90deg, #FF0000, #FFFF00, #00FF00, #00FFFF, #0000FF, #FF00FF, #FF0000)",
+                      border: "2px solid #FFFFFF",
+                      boxShadow: "0 0 0 1.5px #8A6B47",
+                      cursor: "pointer",
+                      display: "inline-flex",
                       alignItems: "center",
-                      gap: "6px",
+                      justifyContent: "center",
+                      overflow: "hidden",
+                      flexShrink: 0,
                     }}
                   >
-                    <span
+                    <input
+                      type="color"
+                      value={activeHexColor}
+                      onChange={(e) => setBadgeColor(e.target.value)}
+                      aria-label="Pilih warna badge bebas"
                       style={{
-                        fontSize: "11px",
-                        fontWeight: 800,
-                        color: "#6D4C30",
-                        marginRight: "2px",
+                        position: "absolute",
+                        inset: 0,
+                        width: "100%",
+                        height: "100%",
+                        opacity: 0,
+                        cursor: "pointer",
                       }}
-                    >
-                      Warna Tersimpan:
-                    </span>
-                    {savedWheelColors.map((hex) => {
-                      const selected = activeHexColor === hex;
-                      return (
-                        <div
-                          key={hex}
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            borderRadius: "8px",
-                            border: selected
-                              ? "2px solid #2A1A11"
-                              : "1px solid #D6C7B2",
-                            backgroundColor: "#FFFFFF",
-                            overflow: "hidden",
-                          }}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => setBadgeColor(hex)}
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "5px",
-                              padding: "4px 6px 4px 8px",
-                              border: "none",
-                              background: "transparent",
-                              color: "#2A1A11",
-                              fontSize: "11px",
-                              fontWeight: 800,
-                              fontFamily: "monospace",
-                              cursor: "pointer",
-                            }}
-                          >
-                            <span
-                              style={{
-                                width: "11px",
-                                height: "11px",
-                                borderRadius: "50%",
-                                backgroundColor: hex,
-                                border: "1px solid rgba(0,0,0,0.18)",
-                                display: "inline-block",
-                              }}
-                            />
-                            <span>{hex}</span>
-                          </button>
+                    />
+                  </label>
 
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteSavedWheelColor(hex)}
-                            title={`Hapus warna tersimpan ${hex}`}
-                            aria-label={`Hapus warna ${hex}`}
-                            style={{
-                              padding: "4px 7px 4px 3px",
-                              border: "none",
-                              background: "transparent",
-                              color: "#DC2626",
-                              fontSize: "12px",
-                              fontWeight: 900,
-                              cursor: "pointer",
-                              lineHeight: 1,
-                            }}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                  <span
+                    style={{
+                      width: "15px",
+                      height: "15px",
+                      borderRadius: "4px",
+                      backgroundColor: activeHexColor,
+                      border: "1px solid rgba(0,0,0,0.2)",
+                      display: "inline-block",
+                      flexShrink: 0,
+                    }}
+                  />
 
-                {/* Pilihan warna cepat bawaan */}
+                  <input
+                    type="text"
+                    value={activeHexColor}
+                    onChange={(e) => {
+                      const val = e.target.value.trim();
+                      if (/^#?[0-9a-fA-F]{0,6}$/.test(val)) {
+                        setBadgeColor(val.startsWith("#") ? val : `#${val}`);
+                      }
+                    }}
+                    maxLength={7}
+                    aria-label="Kode warna hex"
+                    style={{
+                      width: "64px",
+                      border: "1px solid #E5DEC9",
+                      borderRadius: "6px",
+                      padding: "4px 6px",
+                      backgroundColor: "#FAF6EE",
+                      fontSize: "11.5px",
+                      fontWeight: 800,
+                      color: "#2A1A11",
+                      outline: "none",
+                      fontFamily: "monospace",
+                    }}
+                  />
+
+                  <input
+                    type="text"
+                    value={newColorNameInput}
+                    onChange={(e) => setNewColorNameInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleSaveCurrentWheelColor();
+                      }
+                    }}
+                    placeholder={
+                      matchedExistingColor
+                        ? `Nama saat ini: ${matchedExistingColor.label} (ketik untuk ganti)`
+                        : "Nama warna (misal: Tosca, Kuning Kunyit)..."
+                    }
+                    style={{
+                      flex: "1 1 170px",
+                      padding: "5px 9px",
+                      borderRadius: "7px",
+                      border: "1px dashed #8A6B47",
+                      backgroundColor: "#FAF6EE",
+                      fontSize: "11.5px",
+                      color: "#2A1A11",
+                    }}
+                  />
+
+                  <button
+                    type="button"
+                    disabled={isColorAlreadySavedWithSameName}
+                    onClick={handleSaveCurrentWheelColor}
+                    style={{
+                      padding: "6px 11px",
+                      borderRadius: "8px",
+                      border: "none",
+                      backgroundColor: isColorAlreadySavedWithSameName
+                        ? "#E5DEC9"
+                        : "#5C3A21",
+                      color: isColorAlreadySavedWithSameName
+                        ? "#8A6B47"
+                        : "#FFFFFF",
+                      fontSize: "11px",
+                      fontWeight: 800,
+                      cursor: isColorAlreadySavedWithSameName
+                        ? "default"
+                        : "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {matchedExistingColor
+                      ? newColorNameInput.trim() &&
+                        matchedExistingColor.label.toLowerCase() !==
+                          newColorNameInput.trim().toLowerCase()
+                        ? "Update Nama Warna"
+                        : "Tersimpan"
+                      : "+ Simpan Warna"}
+                  </button>
+                </div>
+
+                {/* Daftar chip warna tersimpan: klik untuk pakai, klik ✎ untuk ganti nama, klik × untuk hapus */}
                 <div
                   style={{
                     display: "flex",
@@ -2352,41 +2410,160 @@ export default function AdminMenuPage() {
                     gap: "6px",
                   }}
                 >
-                  {BADGE_COLOR_PALETTE.map((opt) => {
-                    const selected =
-                      activeHexColor.toLowerCase() === opt.bg.toLowerCase();
+                  {colorOptions.map((opt) => {
+                    const selected = activeHexColor === opt.hex;
+                    const isRenaming = editingColorHex === opt.hex;
+
                     return (
-                      <button
-                        type="button"
-                        key={opt.id}
-                        onClick={() => setBadgeColor(opt.bg)}
+                      <div
+                        key={opt.hex}
                         style={{
                           display: "inline-flex",
                           alignItems: "center",
-                          gap: "5px",
-                          padding: "4px 9px",
                           borderRadius: "8px",
-                          fontSize: "11px",
-                          fontWeight: 800,
-                          cursor: "pointer",
                           border: selected
                             ? "2px solid #2A1A11"
                             : "1px solid #D6C7B2",
-                          backgroundColor: "#FFFFFF",
-                          color: "#2A1A11",
+                          backgroundColor: selected ? "#FFFBEB" : "#FFFFFF",
+                          overflow: "hidden",
                         }}
                       >
-                        <span
-                          style={{
-                            width: "11px",
-                            height: "11px",
-                            borderRadius: "50%",
-                            backgroundColor: opt.bg,
-                            display: "inline-block",
-                          }}
-                        />
-                        <span>{opt.label}</span>
-                      </button>
+                        {isRenaming ? (
+                          <div
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              padding: "3px 6px",
+                            }}
+                          >
+                            <span
+                              style={{
+                                width: "11px",
+                                height: "11px",
+                                borderRadius: "50%",
+                                backgroundColor: opt.hex,
+                                border: "1px solid rgba(0,0,0,0.18)",
+                                display: "inline-block",
+                              }}
+                            />
+                            <input
+                              type="text"
+                              value={editingColorLabel}
+                              onChange={(e) =>
+                                setEditingColorLabel(e.target.value)
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  handleCommitRenameColor(opt.hex);
+                                } else if (e.key === "Escape") {
+                                  setEditingColorHex(null);
+                                }
+                              }}
+                              autoFocus
+                              style={{
+                                width: "90px",
+                                padding: "2px 5px",
+                                borderRadius: "4px",
+                                border: "1px solid #5C3A21",
+                                fontSize: "11px",
+                                fontWeight: 700,
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleCommitRenameColor(opt.hex)}
+                              title="Simpan nama warna"
+                              style={{
+                                border: "none",
+                                background: "#166534",
+                                color: "#FFFFFF",
+                                borderRadius: "4px",
+                                padding: "2px 6px",
+                                fontSize: "10px",
+                                fontWeight: 800,
+                                cursor: "pointer",
+                              }}
+                            >
+                              ✓
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setBadgeColor(opt.hex)}
+                              title={`${opt.label} (${opt.hex})`}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "5px",
+                                padding: "4px 6px 4px 8px",
+                                border: "none",
+                                background: "transparent",
+                                color: "#2A1A11",
+                                fontSize: "11px",
+                                fontWeight: 800,
+                                cursor: "pointer",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  width: "11px",
+                                  height: "11px",
+                                  borderRadius: "50%",
+                                  backgroundColor: opt.hex,
+                                  border: "1px solid rgba(0,0,0,0.18)",
+                                  display: "inline-block",
+                                }}
+                              />
+                              <span>{opt.label}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingColorHex(opt.hex);
+                                setEditingColorLabel(opt.label);
+                              }}
+                              title={`Ganti nama warna "${opt.label}"`}
+                              aria-label={`Ganti nama warna ${opt.label}`}
+                              style={{
+                                padding: "4px 4px",
+                                border: "none",
+                                background: "transparent",
+                                color: "#6D4C30",
+                                fontSize: "11px",
+                                fontWeight: 800,
+                                cursor: "pointer",
+                                lineHeight: 1,
+                              }}
+                            >
+                              ✎
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteColorOption(opt.hex)}
+                              title={`Hapus warna "${opt.label}"`}
+                              aria-label={`Hapus warna ${opt.label}`}
+                              style={{
+                                padding: "4px 7px 4px 3px",
+                                border: "none",
+                                background: "transparent",
+                                color: "#DC2626",
+                                fontSize: "12px",
+                                fontWeight: 900,
+                                cursor: "pointer",
+                                lineHeight: 1,
+                              }}
+                            >
+                              ×
+                            </button>
+                          </>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
